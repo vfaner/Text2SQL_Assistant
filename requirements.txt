@@ -1,0 +1,29 @@
+# GUI
+PySide6>=6.5.0
+
+# Database ORM
+SQLAlchemy>=2.0.0
+
+# HTTP / AI
+requests>=2.31.0
+openai>=1.10.0
+
+# SQL formatting
+sqlparse>=0.4.4
+
+# Database drivers (install per DB as needed on target machine)
+# MySQL
+PyMySQL>=1.1.0
+# PostgreSQL / OpenGauss / KingbaseES (compatible)
+psycopg2-binary>=2.9.7
+# SQL Server
+pyodbc>=5.0.0
+# Oracle (requires Oracle Instant Client)
+# cx_Oracle>=8.3.0
+# Dameng
+# dmPython (须从达梦官网下载)
+# ShenTong / GBase (jaydebeapi as bridge, optional)
+# jaydebeapi>=1.2.3
+
+# Optional stronger encryption
+cryptography>=41.0.0

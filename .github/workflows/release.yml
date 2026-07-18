@@ -1,0 +1,156 @@
+name: Build & Release
+
+# ─────────────────────────────────────────────────────────────
+# Triggered by pushing a tag like `v1.0.0`. Builds Windows / macOS / Linux
+# single-file executables in parallel with PyInstaller, then publishes them
+# as attachments on the GitHub Release matching that tag.
+#
+# Manual dispatch is also allowed for smoke-testing without cutting a release
+# (in that case artifacts are uploaded to the workflow run only).
+# ─────────────────────────────────────────────────────────────
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required for softprops/action-gh-release to attach files
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: Text2SQL_Assistant-linux-x86_64
+            binary_ext: ""
+            archive_cmd: tar_gz
+          - os: windows-latest
+            asset_name: Text2SQL_Assistant-windows-x86_64
+            binary_ext: ".exe"
+            archive_cmd: zip
+          - os: macos-latest
+            asset_name: Text2SQL_Assistant-macos-arm64
+            binary_ext: ""
+            archive_cmd: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      # ── Linux runtime deps for Qt (offscreen build is fine, but Qt still
+      #    imports X11/xcb libs at load time) ─────────────────────────────
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libegl1 libxkbcommon0 libdbus-1-3 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0 libfontconfig1 libfreetype6 \
+            binutils
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── Build ────────────────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
+
+      # ── Package (zip on win/mac, tar.gz on linux) ─────────────────────
+      - name: Package (Linux, tar.gz)
+        if: matrix.archive_cmd == 'tar_gz'
+        run: |
+          cd dist
+          tar -czvf "${{ matrix.asset_name }}.tar.gz" "Text2SQL_Assistant${{ matrix.binary_ext }}"
+
+      - name: Package (macOS/Windows, zip)
+        if: matrix.archive_cmd == 'zip'
+        shell: bash
+        run: |
+          cd dist
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            7z a "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
+          else
+            zip "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            dist/${{ matrix.asset_name }}.zip
+            dist/${{ matrix.asset_name }}.tar.gz
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ── Only runs for tag pushes ─────────────────────────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for release notes)
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Show what will be uploaded
+        run: |
+          echo "Artifacts:"
+          find artifacts -type f -maxdepth 3 -printf "%p  (%s bytes)\n"
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Text2SQL Assistant ${{ github.ref_name }}"
+          body: |
+            **Text2SQL Assistant ${{ github.ref_name }}**
+
+            自然语言 → SQL → 一键执行。三个平台的独立可执行文件，无需安装 Python。
+
+            ### 下载
+
+            | 平台        | 文件                                                      |
+            |-------------|-----------------------------------------------------------|
+            | Windows x64 | `Text2SQL_Assistant-windows-x86_64.zip`                   |
+            | macOS arm64 | `Text2SQL_Assistant-macos-arm64.zip`                      |
+            | Linux x64   | `Text2SQL_Assistant-linux-x86_64.tar.gz`                  |
+
+            > macOS 上首次运行如遇 Gatekeeper 拦截，右键点击应用 → 打开 → 允许即可。
+            > Linux 上解包后执行 `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant`。
+
+            更多说明请见仓库 [README](https://github.com/vfaner/Text2SQL_Assistant/blob/main/README.md)。
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+          draft: false
+          prerelease: false

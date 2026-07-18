@@ -1,0 +1,35 @@
+{
+  "data_sources": [
+    {
+      "name": "本地MySQL",
+      "type": "mysql",
+      "host": "127.0.0.1",
+      "port": 3306,
+      "database": "test",
+      "username": "root",
+      "password": "",
+      "params": {"charset": "utf8mb4"}
+    },
+    {
+      "name": "达梦测试",
+      "type": "dm",
+      "host": "192.168.1.100",
+      "port": 5236,
+      "database": "DAMENG",
+      "username": "SYSDBA",
+      "password": "",
+      "params": {}
+    }
+  ],
+  "ai_config": {
+    "provider": "openai",
+    "api_base": "https://api.openai.com/v1",
+    "api_key": "",
+    "model": "gpt-4o-mini",
+    "temperature": 0.2
+  },
+  "current_data_source": "本地MySQL",
+  "ui_settings": {
+    "page_size": 20
+  }
+}

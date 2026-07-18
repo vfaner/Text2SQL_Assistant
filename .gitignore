@@ -1,0 +1,53 @@
+# --- User runtime data ---
+config.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+MANIFEST
+
+# --- Virtualenvs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- PyInstaller artifacts ---
+*.spec.bak
+*.manifest
+
+# --- IDE / editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# --- Test / cache ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
