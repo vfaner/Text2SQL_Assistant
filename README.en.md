@@ -9,6 +9,22 @@ A desktop application built with **PySide6** that turns **natural-language quest
 
 ---
 
+## 📦 Grab a pre-built binary (no Python required)
+
+Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/Text2SQL_Assistant/releases)**, download the archive for your platform, unpack it, and **double-click to run**. No Python, no dependencies, no `pip install`.
+
+| Platform | Download | How to run |
+|----------|----------|------------|
+| **Windows x64** | `Text2SQL_Assistant-windows-x86_64.zip` | Unzip → double-click `Text2SQL_Assistant.exe` |
+| **macOS (Apple Silicon)** | `Text2SQL_Assistant-macos-arm64.zip` | Unzip → double-click. If Gatekeeper blocks it, right-click → Open → Allow. |
+| **Linux x64** | `Text2SQL_Assistant-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant` |
+
+> 👉 **Latest release**: https://github.com/vfaner/Text2SQL_Assistant/releases/latest
+>
+> The "run from source" instructions below are only needed if you want to modify the code, contribute, or run on a target we don't yet ship binaries for (e.g. Intel Macs).
+
+---
+
 ## Screenshots
 
 ### Text2SQL – main workspace

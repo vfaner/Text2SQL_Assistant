@@ -9,6 +9,22 @@
 
 ---
 
+## 📦 直接下载可执行文件（无需 Python 环境）
+
+不想折腾环境？直接到 **[Releases 页面](https://github.com/vfaner/Text2SQL_Assistant/releases)** 下载对应平台的打包程序，解压后**双击即可运行**，不依赖 Python、不依赖任何库。
+
+| 平台 | 下载文件 | 使用方式 |
+|------|---------|----------|
+| **Windows x64** | `Text2SQL_Assistant-windows-x86_64.zip` | 解压 → 双击 `Text2SQL_Assistant.exe` |
+| **macOS (Apple Silicon)** | `Text2SQL_Assistant-macos-arm64.zip` | 解压 → 双击。首次遇 Gatekeeper 拦截时，右键 → 打开 → 允许 |
+| **Linux x64** | `Text2SQL_Assistant-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant` |
+
+> 👉 **最新版本**：https://github.com/vfaner/Text2SQL_Assistant/releases/latest
+>
+> 只有想改代码、二次开发或跑不同架构（如 Intel Mac）时才需要下面的“从源码运行”步骤。
+
+---
+
 ## 界面预览
 
 ### Text2SQL 核心页
