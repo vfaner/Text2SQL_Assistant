@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
 )
 
 from .config import DB_TYPES, ConfigManager
+from .db import precheck_sql
+from .error_dialog import show_error
 from .highlighter import SQLHighlighter
 from . import toast
 from .workers import AIGenerateWorker, SQLExecuteWorker
@@ -38,6 +40,7 @@ class Text2SQLPage(QWidget):
 
         self._build_ui()
         self.refresh_data_sources()
+        self.refresh_ai_configs()
 
     # ----- UI -----
     def _build_ui(self) -> None:
@@ -49,9 +52,16 @@ class Text2SQLPage(QWidget):
         toolbar = QHBoxLayout()
         toolbar.addWidget(QLabel("当前数据源:"))
         self.ds_combo = QComboBox()
-        self.ds_combo.setMinimumWidth(220)
+        self.ds_combo.setMinimumWidth(200)
         self.ds_combo.currentIndexChanged.connect(self._on_ds_change)
         toolbar.addWidget(self.ds_combo)
+
+        toolbar.addSpacing(12)
+        toolbar.addWidget(QLabel("AI:"))
+        self.ai_combo = QComboBox()
+        self.ai_combo.setMinimumWidth(180)
+        self.ai_combo.currentIndexChanged.connect(self._on_ai_change)
+        toolbar.addWidget(self.ai_combo)
 
         toolbar.addSpacing(20)
         toolbar.addStretch(1)
@@ -184,7 +194,29 @@ class Text2SQLPage(QWidget):
         self.page_size_spin.setValue(self._page_size)
         self.page_size_spin.blockSignals(False)
 
+    def refresh_ai_configs(self) -> None:
+        """Reload the AI-config dropdown from ConfigManager."""
+        current = self.cfg.data.get("current_ai_config", "") or ""
+        self.ai_combo.blockSignals(True)
+        self.ai_combo.clear()
+        self.ai_combo.addItem("（未选择 AI）", "")
+        for ai in self.cfg.get_ai_configs():
+            label = f"{ai.get('name','?')}  [{ai.get('provider','?')}]"
+            self.ai_combo.addItem(label, ai["name"])
+        idx = 0
+        for i in range(self.ai_combo.count()):
+            if self.ai_combo.itemData(i) == current:
+                idx = i
+                break
+        self.ai_combo.setCurrentIndex(idx)
+        self.ai_combo.blockSignals(False)
+
     # ----- helpers -----
+    def _current_ai_cfg(self) -> Optional[Dict[str, Any]]:
+        name = self.ai_combo.currentData()
+        if not name:
+            return None
+        return self.cfg.find_ai_config(name)
     def _current_ds(self) -> Optional[Dict[str, Any]]:
         name = self.ds_combo.currentData()
         if not name:
@@ -219,6 +251,16 @@ class Text2SQLPage(QWidget):
         if name:
             self.status_message.emit(f"已切换到数据源: {name}")
 
+    def _on_ai_change(self, _idx: int) -> None:
+        name = self.ai_combo.currentData() or ""
+        self.cfg.set_current_ai_config(name)
+        try:
+            self.cfg.save()
+        except Exception:
+            pass
+        if name:
+            self.status_message.emit(f"已切换到 AI: {name}")
+
     def _on_page_size_change(self, val: int) -> None:
         self._page_size = int(val)
         self.cfg.set_page_size(self._page_size)
@@ -244,9 +286,9 @@ class Text2SQLPage(QWidget):
         if not desc:
             toast.warning(self, "请先输入自然语言描述")
             return
-        ai_cfg = self.cfg.get_ai_config()
-        if not ai_cfg.get("api_key") or not ai_cfg.get("api_base") or not ai_cfg.get("model"):
-            toast.warning(self, "请先在“AI 配置”中填写 API Base / API Key / 模型")
+        ai_cfg = self._current_ai_cfg() or self.cfg.get_current_ai_config()
+        if not ai_cfg or not ai_cfg.get("api_key") or not ai_cfg.get("api_base") or not ai_cfg.get("model"):
+            toast.warning(self, "请先在“AI 配置”中新建并选中一份可用的配置")
             return
 
         ds = self._current_ds()
@@ -262,15 +304,35 @@ class Text2SQLPage(QWidget):
             self.btn_generate.setEnabled(True)
             self.btn_generate.setText("生成 SQL")
             self.progress.setVisible(False)
+
+            # Pre-check before writing to the editor - catches AI returning prose,
+            # unbalanced quotes, or empty output.
+            ok_check, reason = precheck_sql(sql)
+            if not ok_check:
+                show_error(
+                    self,
+                    summary="AI 生成的 SQL 预检未通过",
+                    detail=f"原因：{reason}\n\n模型返回内容：\n{sql[:2000]}",
+                    title="预检失败",
+                )
+                self.status_message.emit(f"AI 生成的 SQL 预检未通过：{reason}")
+                return
+
             self.sql_edit.setPlainText(sql)
-            self.status_message.emit("SQL 已生成，可执行或编辑")
-            toast.success(self, "AI 已生成 SQL")
+            self.status_message.emit("SQL 已生成并通过预检，可执行或编辑")
+            toast.success(self, "AI 已生成 SQL（预检通过）")
 
         def fail(msg: str) -> None:
             self.btn_generate.setEnabled(True)
             self.btn_generate.setText("生成 SQL")
             self.progress.setVisible(False)
-            toast.error(self, f"AI 生成失败: {msg}")
+            show_error(
+                self,
+                summary="AI 调用失败",
+                detail=msg,
+                title="AI 生成失败",
+            )
+            self.status_message.emit("AI 生成失败")
 
         self._ai_worker.finished_ok.connect(ok)
         self._ai_worker.failed.connect(fail)
@@ -319,7 +381,9 @@ class Text2SQLPage(QWidget):
         self.btn_execute.setEnabled(False)
         self.btn_generate.setEnabled(False)
         self.progress.setVisible(True)
-        self.result_message.setText("正在执行…")
+        # Clear any stale content so the previous result never lingers
+        # underneath an error message.
+        self._clear_result_view("正在执行…")
 
         self._sql_worker = SQLExecuteWorker(ds, sql, page, page_size)
 
@@ -352,13 +416,52 @@ class Text2SQLPage(QWidget):
 
         def fail(msg: str) -> None:
             self._finish_exec()
-            self.result_message.setText(f"执行失败: {msg}")
-            toast.error(self, f"执行失败: {msg}")
+            # Wipe the result view so nothing from a previous successful run
+            # is left behind under the failure state.
+            self._clear_result_view("")
+            # Show a proper dialog with a Close button and scrollable detail.
+            summary = self._short_error(msg)
+            show_error(self, summary=summary, detail=msg, title="SQL 执行失败")
+            self.result_message.setText(f"执行失败：{summary}")
+            self.status_message.emit("SQL 执行失败")
 
         self._sql_worker.select_ok.connect(sel_ok)
         self._sql_worker.non_select_ok.connect(ns_ok)
         self._sql_worker.failed.connect(fail)
         self._sql_worker.start()
+
+    def _clear_result_view(self, message: str) -> None:
+        """Drop the table's contents and reset pagination state."""
+        self.result_table.clear()
+        self.result_table.setRowCount(0)
+        self.result_table.setColumnCount(0)
+        self._total_rows = 0
+        self._update_pagination_ui()
+        self.result_message.setText(message)
+
+    @staticmethod
+    def _short_error(msg: str) -> str:
+        """Extract a concise one-liner from a long SQLAlchemy traceback-style message."""
+        if not msg:
+            return "未知错误"
+        # SQLAlchemy typically formats as "(engine.error.SomeError) driver-message\n[SQL: ...]"
+        # We want just the driver message.
+        text = msg.strip()
+        # Trim after [SQL: or [parameters:
+        for marker in ("\n[SQL:", "\n[parameters:", " [SQL:", " [parameters:"):
+            i = text.find(marker)
+            if i >= 0:
+                text = text[:i]
+        # Take the first line
+        first_line = text.splitlines()[0].strip()
+        # Drop leading "(some.Error)" prefix if present
+        if first_line.startswith("(") and ")" in first_line:
+            close = first_line.find(")")
+            first_line = first_line[close + 1:].strip()
+        # Cap length
+        if len(first_line) > 180:
+            first_line = first_line[:180] + "…"
+        return first_line or "未知错误"
 
     def _finish_exec(self) -> None:
         self.btn_execute.setEnabled(True)

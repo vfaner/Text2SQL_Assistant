@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
 
         # Trigger initial refreshes
         self.text2sql_page.refresh_data_sources()
+        self.text2sql_page.refresh_ai_configs()
         self._refresh_status()
 
     def _center_on_screen(self) -> None:
@@ -98,8 +99,12 @@ class MainWindow(QMainWindow):
 
     def _wire_signals(self) -> None:
         self.data_source_page.data_sources_changed.connect(self._on_data_sources_changed)
-        self.ai_page.ai_changed.connect(self._refresh_status)
+        self.ai_page.ai_changed.connect(self._on_ai_changed)
         self.text2sql_page.status_message.connect(self._set_status)
+
+    def _on_ai_changed(self) -> None:
+        self.text2sql_page.refresh_ai_configs()
+        self._refresh_status()
 
     # ----- window controls -----
     def _toggle_max_restore(self) -> None:
@@ -123,11 +128,12 @@ class MainWindow(QMainWindow):
 
     def _refresh_status(self) -> None:
         ds_name = self.cfg.get_current_data_source() or "(未选择)"
-        ai_cfg = self.cfg.get_ai_config()
-        ai_desc = ai_cfg.get("model") or "(未配置)"
+        ai_cfg = self.cfg.get_current_ai_config() or {}
+        ai_name = ai_cfg.get("name") or "(未配置)"
         provider = ai_cfg.get("provider") or "?"
+        model = ai_cfg.get("model") or "-"
         self.status_ds_label.setText(f"数据源: {ds_name}")
-        self.status_ai_label.setText(f"AI: {provider}/{ai_desc}")
+        self.status_ai_label.setText(f"AI: {ai_name} ({provider}/{model})")
 
     def _set_status(self, msg: str) -> None:
         self.status_msg_label.setText(msg)

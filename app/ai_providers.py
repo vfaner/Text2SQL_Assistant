@@ -1,9 +1,21 @@
 """
 AI providers: adapters that turn natural-language descriptions into SQL.
 
-Most Chinese vendor endpoints are OpenAI-compatible (they accept the /chat/completions
-schema), so we use a single OpenAIStyleProvider for all of them. `provider` code
-only changes the default base URL / default model.
+Two request/response protocols are supported:
+
+    - `openai`     : POST {base}/chat/completions with the OpenAI schema.
+                      Covers most vendors: OpenAI, DeepSeek, Qwen/Bailian,
+                      Doubao/Volcengine, GLM, Kimi, Baidu Qianfan v2,
+                      GitHub Models, and any 3rd-party gateway that claims
+                      "OpenAI-compatible".
+
+    - `anthropic`  : POST {base}/messages with the Anthropic Messages API
+                      schema. Covers Anthropic Claude and any gateway that
+                      claims "Anthropic-compatible" (e.g. LiteLLM,
+                      OpenRouter's Anthropic mode).
+
+`make_provider(cfg)` picks one based on `cfg["protocol"]`, falling back to
+`openai` for older config files.
 """
 from __future__ import annotations
 
@@ -29,15 +41,32 @@ def _extract_sql(text: str) -> str:
     """Remove markdown fences / stray commentary if any."""
     if not text:
         return ""
-    # ```sql ... ```
     m = re.search(r"```(?:sql)?\s*(.+?)```", text, flags=re.DOTALL | re.IGNORECASE)
     if m:
         return m.group(1).strip()
     return text.strip()
 
 
-class OpenAIStyleProvider:
-    """Any OpenAI /chat/completions - compatible provider (OpenAI, Qwen/Bailian, DeepSeek, Doubao)."""
+# ---------- Base ----------
+
+class BaseProvider:
+    """Common shape for provider adapters."""
+
+    def generate_sql(self, description: str, dialect: str = "MySQL") -> str:
+        raise NotImplementedError
+
+    def test_call(self) -> Tuple[bool, str]:
+        raise NotImplementedError
+
+
+# ---------- OpenAI-compatible ----------
+
+class OpenAIStyleProvider(BaseProvider):
+    """/chat/completions with the OpenAI schema.
+
+    Works for: OpenAI, DeepSeek, Qwen/Bailian, Doubao/Volcengine, GLM,
+    Kimi/Moonshot, Baidu Qianfan v2, GitHub Models, custom gateways.
+    """
 
     def __init__(self, api_base: str, api_key: str, model: str, temperature: float = 0.2, timeout: int = 60):
         self.api_base = (api_base or "").rstrip("/")
@@ -47,7 +76,6 @@ class OpenAIStyleProvider:
         self.timeout = timeout
 
     def _endpoint(self) -> str:
-        # Users may or may not include /v1 in api_base - allow both
         base = self.api_base
         if base.endswith("/chat/completions"):
             return base
@@ -80,10 +108,8 @@ class OpenAIStyleProvider:
         except Exception:
             raise RuntimeError(f"AI 响应格式不符合预期: {json.dumps(data, ensure_ascii=False)[:500]}")
 
-    # ---- Public methods ----
     def generate_sql(self, description: str, dialect: str = "MySQL") -> str:
-        content = self._chat(SYSTEM_PROMPT.format(dialect=dialect), description)
-        return _extract_sql(content)
+        return _extract_sql(self._chat(SYSTEM_PROMPT.format(dialect=dialect), description))
 
     def test_call(self) -> Tuple[bool, str]:
         try:
@@ -93,8 +119,106 @@ class OpenAIStyleProvider:
             return False, f"测试失败: {e}"
 
 
-def make_provider(cfg: Dict[str, Any]) -> OpenAIStyleProvider:
-    """Build a provider instance from an ai_config dict."""
+# ---------- Anthropic-compatible ----------
+
+class AnthropicStyleProvider(BaseProvider):
+    """Anthropic Messages API (`POST {base}/messages`).
+
+    Auth via `x-api-key`, plus `anthropic-version` header.
+    System prompt is a top-level field, not a message.
+    """
+
+    DEFAULT_VERSION = "2023-06-01"
+    DEFAULT_MAX_TOKENS = 2048
+
+    def __init__(
+        self,
+        api_base: str,
+        api_key: str,
+        model: str,
+        temperature: float = 0.2,
+        timeout: int = 60,
+        anthropic_version: str = DEFAULT_VERSION,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ):
+        self.api_base = (api_base or "").rstrip("/")
+        self.api_key = api_key or ""
+        self.model = model or ""
+        self.temperature = float(temperature or 0.2)
+        self.timeout = timeout
+        self.version = anthropic_version
+        self.max_tokens = int(max_tokens)
+
+    def _endpoint(self) -> str:
+        base = self.api_base
+        if base.endswith("/messages"):
+            return base
+        return f"{base}/messages"
+
+    def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+            "anthropic-version": self.version,
+        }
+        resp = requests.post(self._endpoint(), headers=headers, data=json.dumps(payload), timeout=self.timeout)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"AI 接口返回 HTTP {resp.status_code}: {resp.text[:500]}")
+        try:
+            return resp.json()
+        except Exception as e:
+            raise RuntimeError(f"AI 响应不是合法 JSON: {e} | body={resp.text[:300]}")
+
+    def _chat(self, system: str, user: str) -> str:
+        payload = {
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        }
+        data = self._post(payload)
+        # Anthropic response: { content: [{type:"text", text:"..."}], ...}
+        try:
+            content = data.get("content", [])
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    return block.get("text", "") or ""
+            # Fallback if the API returns unexpected shape
+            if content and isinstance(content, list) and isinstance(content[0], dict):
+                return content[0].get("text", "") or ""
+        except Exception:
+            pass
+        raise RuntimeError(f"AI 响应格式不符合预期: {json.dumps(data, ensure_ascii=False)[:500]}")
+
+    def generate_sql(self, description: str, dialect: str = "MySQL") -> str:
+        return _extract_sql(self._chat(SYSTEM_PROMPT.format(dialect=dialect), description))
+
+    def test_call(self) -> Tuple[bool, str]:
+        try:
+            reply = self._chat("You are a helpful assistant.", "Please reply with the single word: OK")
+            return True, f"测试成功 - 模型回复: {reply.strip()[:80]}"
+        except Exception as e:
+            return False, f"测试失败: {e}"
+
+
+# ---------- Factory ----------
+
+def make_provider(cfg: Dict[str, Any]) -> BaseProvider:
+    """Build a provider adapter from an ai_config dict.
+
+    Dispatches on `cfg["protocol"]`. Defaults to `openai` for older configs
+    that were saved before the field was introduced.
+    """
+    protocol = (cfg.get("protocol") or "openai").lower()
+    if protocol == "anthropic":
+        return AnthropicStyleProvider(
+            api_base=cfg.get("api_base") or "",
+            api_key=cfg.get("api_key") or "",
+            model=cfg.get("model") or "",
+            temperature=cfg.get("temperature", 0.2),
+        )
+    # Default: OpenAI-compatible
     return OpenAIStyleProvider(
         api_base=cfg.get("api_base") or "",
         api_key=cfg.get("api_key") or "",

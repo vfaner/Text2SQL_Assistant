@@ -21,14 +21,34 @@ DB_TYPES = [
     ("其他（自定义）", "custom", 0),
 ]
 
-# Supported AI providers  (display name, code, default base url, default model)
+# Supported AI providers.
+# Tuple: (display name, code, protocol, default base url, default model)
+#   protocol: "openai" (OpenAI-compatible /chat/completions) or
+#             "anthropic" (Anthropic Messages API /messages)
+#
+# Note: a single physical vendor can appear more than once when it exposes
+# different base URLs per protocol (e.g. Volcengine ARK). The vendor list is
+# the source of truth for what the "Vendor" dropdown displays; switching
+# vendor auto-fills protocol + base URL + default model.
 AI_PROVIDERS = [
-    ("阿里百炼（Qwen）", "bailian", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"),
-    ("豆包（Doubao）", "doubao", "https://ark.cn-beijing.volces.com/api/v3", "doubao-pro-32k"),
-    ("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek-chat"),
-    ("千问（Qwen）", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-    ("OpenAI", "openai", "https://api.openai.com/v1", "gpt-4o-mini"),
-    ("其他（自定义）", "custom", "", ""),
+    # ── OpenAI-compatible vendors ─────────────────────────────────────
+    ("OpenAI", "openai", "openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+    ("阿里百炼（Qwen）", "bailian", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"),
+    ("千问（Qwen）", "qwen", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
+    ("火山引擎（Volcengine ARK · OpenAI 协议）", "volcengine", "openai", "https://ark.cn-beijing.volces.com/api/plan/v3", "ark-code-latest"),
+    ("豆包（Doubao）", "doubao", "openai", "https://ark.cn-beijing.volces.com/api/v3", "doubao-pro-32k"),
+    ("DeepSeek", "deepseek", "openai", "https://api.deepseek.com/v1", "deepseek-chat"),
+    ("百度千帆（ERNIE）", "qianfan", "openai", "https://qianfan.baidubce.com/v2", "ernie-4.0-turbo-8k"),
+    ("智谱 GLM", "zhipu", "openai", "https://open.bigmodel.cn/api/paas/v4", "glm-4-plus"),
+    ("Kimi（Moonshot）", "kimi", "openai", "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
+    ("胜算云", "shengsuanyun", "openai", "https://router.shengsuanyun.com/api/v1", "deepseek-chat"),
+    ("GitHub Copilot / Models", "github_models", "openai", "https://models.inference.ai.azure.com", "gpt-4o-mini"),
+    ("兼容 OpenAI 协议（自定义）", "openai_custom", "openai", "", ""),
+
+    # ── Anthropic-compatible vendors ──────────────────────────────────
+    ("Anthropic Claude", "anthropic", "anthropic", "https://api.anthropic.com/v1", "claude-3-5-sonnet-latest"),
+    ("火山引擎（Volcengine ARK · Anthropic 协议）", "volcengine_anthropic", "anthropic", "https://ark.cn-beijing.volces.com/api/plan", "ark-code-latest"),
+    ("兼容 Anthropic 协议（自定义）", "anthropic_custom", "anthropic", "", ""),
 ]
 
 
@@ -56,18 +76,26 @@ def _deobfuscate(text: str) -> str:
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "data_sources": [],
-    "ai_config": {
-        "provider": "openai",
-        "api_base": "https://api.openai.com/v1",
-        "api_key": "",
-        "model": "gpt-4o-mini",
-        "temperature": 0.2,
-    },
+    # New multi-config schema. Legacy `ai_config` (single dict) is auto-migrated.
+    "ai_configs": [],
+    "current_ai_config": "",
     "current_data_source": "",
     "ui_settings": {
         "page_size": 20,
     },
 }
+
+
+def _default_ai_entry(name: str = "默认") -> Dict[str, Any]:
+    return {
+        "name": name,
+        "provider": "openai",
+        "protocol": "openai",
+        "api_base": "https://api.openai.com/v1",
+        "api_key": "",
+        "model": "gpt-4o-mini",
+        "temperature": 0.2,
+    }
 
 
 class ConfigManager:
@@ -88,19 +116,31 @@ class ConfigManager:
         except Exception:
             return
 
-        # Merge with defaults so missing keys don't break things
         merged = json.loads(json.dumps(DEFAULT_CONFIG))
         merged.update(raw or {})
         # Ensure nested dicts merged
-        for k in ("ai_config", "ui_settings"):
-            base = DEFAULT_CONFIG[k].copy()
-            base.update(merged.get(k, {}) or {})
-            merged[k] = base
+        base = DEFAULT_CONFIG["ui_settings"].copy()
+        base.update(merged.get("ui_settings", {}) or {})
+        merged["ui_settings"] = base
+
+        # Migrate legacy single-config schema (ai_config: {...}) -> ai_configs: [...]
+        legacy = raw.get("ai_config") if isinstance(raw, dict) else None
+        if legacy and not merged.get("ai_configs"):
+            entry = _default_ai_entry("默认")
+            entry.update({k: v for k, v in legacy.items() if k in entry})
+            entry["api_key"] = legacy.get("api_key", "")
+            merged["ai_configs"] = [entry]
+            if not merged.get("current_ai_config"):
+                merged["current_ai_config"] = entry["name"]
+
+        # Ensure the list exists
+        merged.setdefault("ai_configs", [])
 
         # Decrypt sensitive fields
         for ds in merged.get("data_sources", []):
             ds["password"] = _deobfuscate(ds.get("password", ""))
-        merged["ai_config"]["api_key"] = _deobfuscate(merged["ai_config"].get("api_key", ""))
+        for ai in merged.get("ai_configs", []):
+            ai["api_key"] = _deobfuscate(ai.get("api_key", ""))
 
         self.data = merged
 
@@ -109,7 +149,10 @@ class ConfigManager:
         out = json.loads(json.dumps(self.data))
         for ds in out.get("data_sources", []):
             ds["password"] = _obfuscate(ds.get("password", ""))
-        out["ai_config"]["api_key"] = _obfuscate(out["ai_config"].get("api_key", ""))
+        for ai in out.get("ai_configs", []):
+            ai["api_key"] = _obfuscate(ai.get("api_key", ""))
+        # Don't persist the legacy key
+        out.pop("ai_config", None)
 
         try:
             with open(self.path, "w", encoding="utf-8") as f:
@@ -139,12 +182,40 @@ class ConfigManager:
         if self.data.get("current_data_source") == name:
             self.data["current_data_source"] = ""
 
-    # ----- AI config -----
-    def get_ai_config(self) -> Dict[str, Any]:
-        return self.data.setdefault("ai_config", DEFAULT_CONFIG["ai_config"].copy())
+    # ----- AI configs (multi) -----
+    def get_ai_configs(self) -> List[Dict[str, Any]]:
+        return self.data.setdefault("ai_configs", [])
 
-    def set_ai_config(self, cfg: Dict[str, Any]) -> None:
-        self.data["ai_config"] = cfg
+    def find_ai_config(self, name: str) -> Optional[Dict[str, Any]]:
+        for ai in self.get_ai_configs():
+            if ai.get("name") == name:
+                return ai
+        return None
+
+    def upsert_ai_config(self, cfg: Dict[str, Any]) -> None:
+        for i, existing in enumerate(self.get_ai_configs()):
+            if existing.get("name") == cfg.get("name"):
+                self.get_ai_configs()[i] = cfg
+                return
+        self.get_ai_configs().append(cfg)
+
+    def remove_ai_config(self, name: str) -> None:
+        self.data["ai_configs"] = [c for c in self.get_ai_configs() if c.get("name") != name]
+        if self.data.get("current_ai_config") == name:
+            self.data["current_ai_config"] = ""
+
+    def get_current_ai_config(self) -> Optional[Dict[str, Any]]:
+        """Return the AI config marked as current, or the first one if none is marked."""
+        name = self.data.get("current_ai_config") or ""
+        if name:
+            found = self.find_ai_config(name)
+            if found:
+                return found
+        configs = self.get_ai_configs()
+        return configs[0] if configs else None
+
+    def set_current_ai_config(self, name: str) -> None:
+        self.data["current_ai_config"] = name
 
     # ----- current selection -----
     def get_current_data_source(self) -> str:

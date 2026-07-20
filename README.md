@@ -40,11 +40,15 @@
 
 ## 功能亮点
 
-- **Text2SQL**：自然语言输入 → AI 生成 SQL → 手动可编辑 → 一键执行；查询以表格 + 分页展示，非查询显示受影响行数。
-- **多数据库支持**：MySQL、PostgreSQL、Oracle、SQL Server、OpenGauss、达梦（DM）、人大金仓（KingbaseES）、南大通用（GBase）、神通（ShenTong），以及自定义。
-- **多 AI 厂商**：阿里百炼（Qwen）、豆包（Doubao）、DeepSeek、千问、OpenAI，或自定义（OpenAI 兼容端点）。
-- **配置管理**：数据源和 AI 配置持久化到 `config.json`；密码、API Key 使用 base64 编码存储。
-- **现代化 UI**：自绘无边框标题栏、右上角 GitHub / 捐赠按钮，Vue element-plus 风格的 Toast 通知，圆角、柔和配色。
+- **Text2SQL**：自然语言输入 → AI 生成 SQL → **自动预检**（防止 AI 返回散文 / 括号不匹配等）→ 手动可编辑 → 一键执行；查询以表格 + 分页展示，非查询显示受影响行数。
+- **多数据库支持**：MySQL、PostgreSQL、Oracle、SQL Server、OpenGauss、达梦（DM）、人大金仓（KingbaseES）、南大通用（GBase）、神通（ShenTong），以及自定义 SQLAlchemy URL。
+- **多 AI 配置 · 一键切换**：像数据源一样可以配置多份 AI（新建 / 编辑 / 删除 / 测试调用 / 设为当前），主界面顶部下拉切换。
+- **双协议 · 多厂商**：
+  - **OpenAI 兼容 `/chat/completions`**：OpenAI、阿里百炼、千问、火山引擎 ARK、豆包、DeepSeek、百度千帆（ERNIE）、智谱 GLM、Kimi（Moonshot）、胜算云、GitHub Copilot/Models，以及自定义。
+  - **Anthropic 兼容 `/messages`**：Anthropic Claude、火山引擎 ARK Anthropic 协议入口，以及自定义。
+- **友好错误处理**：SQL 执行失败弹独立错误对话框（可关闭 / 可滚动），旧结果不会残留；错误摘要提取一行显示。
+- **配置管理**：数据源和 AI 配置持久化到 `config.json`；密码、API Key 使用 base64 编码存储；老配置自动迁移。
+- **现代化 UI**：自绘无边框标题栏、右上角 GitHub / 捐赠按钮，Vue element-plus 风格的 Toast 通知，圆角、柔和配色，启动窗口自动居中。
 
 ---
 
@@ -70,17 +74,18 @@ Text2SQL_Assistant/
 └── app/
     ├── __init__.py
     ├── config.py                  # config.json 读写 + DB/AI 列表 + base64 编码
-    ├── db.py                      # SQLAlchemy URL 构造 + 各方言分页 + SQL 执行
-    ├── ai_providers.py            # AI 适配层（OpenAI 兼容接口）
+    ├── db.py                      # SQLAlchemy URL 构造 + 各方言分页 + SQL 执行 + 预检
+    ├── ai_providers.py            # AI 适配层（OpenAI + Anthropic 双协议）
     ├── workers.py                 # 后台 QThread（AI 生成、DB 测试、SQL 执行）
     ├── highlighter.py             # SQL 语法高亮
     ├── styles.py                  # QSS 样式
     ├── toast.py                   # Vue 风格 Toast 通知
+    ├── error_dialog.py            # 错误弹窗（可关闭 / 可滚动）
     ├── title_bar.py               # 自定义标题栏（GitHub / 捐赠 / 窗口控制）
     ├── donate_dialog.py           # 打赏二维码弹窗
     ├── pages_text2sql.py          # Text2SQL 页面
     ├── pages_data_source.py       # 数据源配置页面
-    ├── pages_ai.py                # AI 配置页面
+    ├── pages_ai.py                # AI 配置页面（多份配置管理）
     ├── pages_about.py             # 软件说明页面
     └── main_window.py             # 主窗口
 ```
@@ -112,16 +117,53 @@ python main.py
 
 ## 使用步骤
 
-1. 打开 **AI 配置**：选择厂商，填入 API 地址、API Key、模型名称 → 点“测试调用”验证 → 点“保存配置”。
-2. 打开 **数据源配置**：点“新建”，选择数据库类型，填写连接信息 → 点“测试连接”验证 → 点“保存当前”。
+1. 打开 **AI 配置**（可保存多份，随时切换）：
+   - 点 **新建** → 选厂商（会自动填协议、API 地址、默认模型）→ 补 API Key → **测试调用** 验证 → **保存当前**
+   - 需要多套配置（比如生产 / 测试、不同厂商对比）就重复上一步
+   - 在列表中选中某份 → 点 **设为当前使用** 即可切换（也可以在 Text2SQL 页顶部下拉直接切）
+2. 打开 **数据源配置**：点 **新建**，选数据库类型，填写连接信息 → **测试连接** → **保存当前**
 3. 回到 **Text2SQL**：
-   - 顶部选择数据源
+   - 顶部选择数据源和要使用的 AI 配置
    - 在“自然语言描述”中输入需求（例如 “查询销售额大于 1000 的客户名称和订单总额”）
-   - 点“生成 SQL” → 中间编辑区出现 SQL，可手动改
-   - 点“执行 SQL” → 结果显示在下方；SELECT 结果可分页翻页
+   - 点 **生成 SQL** → 系统对返回内容做一次预检 → 通过后填入中间编辑区，可手动改
+   - 点 **执行 SQL** → 结果显示在下方；SELECT 支持分页翻页
+   - 若 SQL 执行失败，会弹出独立错误弹窗（有关闭按钮，可滚动查看完整报错），旧结果自动清空
 4. 详细使用说明也可以在应用内的 **软件说明** 页查看。
 
 “执行 SQL” 按钮在未选择数据源时会置灰。
+
+---
+
+## 支持的 AI 厂商
+
+按接口协议分类：
+
+### OpenAI 兼容 `/chat/completions`
+
+| 厂商 | 默认 Base URL | 默认模型 |
+|------|--------------|---------|
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 阿里百炼（Qwen） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-max` |
+| 千问（Qwen） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
+| 火山引擎 ARK · OpenAI 协议 | `https://ark.cn-beijing.volces.com/api/plan/v3` | `ark-code-latest` |
+| 豆包（Doubao） | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-pro-32k` |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| 百度千帆（ERNIE） | `https://qianfan.baidubce.com/v2` | `ernie-4.0-turbo-8k` |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-plus` |
+| Kimi（Moonshot） | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| 胜算云 | `https://router.shengsuanyun.com/api/v1` | `deepseek-chat` |
+| GitHub Copilot / Models | `https://models.inference.ai.azure.com` | `gpt-4o-mini` |
+| 兼容 OpenAI 协议（自定义） | 用户填写 | 用户填写 |
+
+### Anthropic 兼容 `/messages`
+
+| 厂商 | 默认 Base URL | 默认模型 |
+|------|--------------|---------|
+| Anthropic Claude | `https://api.anthropic.com/v1` | `claude-3-5-sonnet-latest` |
+| 火山引擎 ARK · Anthropic 协议 | `https://ark.cn-beijing.volces.com/api/plan` | `ark-code-latest` |
+| 兼容 Anthropic 协议（自定义） | 用户填写 | 用户填写 |
+
+> 选择厂商后，**协议**、**Base URL**、**默认模型** 会自动填充；也可以手动在“协议”下拉里在两种协议之间切换，用于对接不在预置列表中的第三方兼容网关（LiteLLM / OpenRouter 等）。
 
 ---
 

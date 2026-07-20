@@ -131,6 +131,58 @@ def is_select(sql: str) -> bool:
     return bool(_SELECT_RE.match(sql or ""))
 
 
+# --- SQL pre-check ---
+
+
+def precheck_sql(sql: str) -> Tuple[bool, str]:
+    """Cheap syntactic sanity check on AI-generated SQL.
+
+    Returns (ok, message). This is a fail-fast layer that catches the common
+    ways AI output goes wrong (empty output, only comments, unbalanced
+    delimiters). It does NOT parse SQL fully — that's the database's job at
+    execute time.
+    """
+    if not sql or not sql.strip():
+        return False, "SQL 为空"
+
+    stripped = sql.strip()
+
+    # Comment-only?
+    lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
+    if lines and all(ln.startswith("--") or ln.startswith("#") for ln in lines):
+        return False, "SQL 只包含注释，没有可执行语句"
+
+    # Try to parse with sqlparse - not a full validator, but catches obviously
+    # broken input (e.g. AI returned prose).
+    try:
+        import sqlparse
+        parsed = sqlparse.parse(stripped)
+        if not parsed or not parsed[0].tokens:
+            return False, "SQL 解析为空"
+        # Look for at least one recognizable DML/DDL keyword.
+        upper = stripped.upper()
+        if not re.search(
+            r"\b(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|"
+            r"TRUNCATE|SHOW|DESC|DESCRIBE|EXPLAIN|GRANT|REVOKE|CALL|MERGE)\b",
+            upper,
+        ):
+            return False, "未检测到 SQL 关键字（SELECT / INSERT / UPDATE / CREATE ...）"
+    except Exception:
+        # sqlparse is very tolerant, so this really is unusual.
+        pass
+
+    # Balanced parentheses & quotes
+    if stripped.count("(") != stripped.count(")"):
+        return False, "圆括号不匹配"
+    # Only count quotes outside comments; simplistic but useful.
+    single = stripped.count("'") - stripped.count("\\'")
+    if single % 2 != 0:
+        return False, "单引号不闭合"
+
+    return True, ""
+
+
+
 def _strip_trailing_semi(sql: str) -> str:
     return (sql or "").strip().rstrip(";").strip()
 
