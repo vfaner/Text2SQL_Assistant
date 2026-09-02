@@ -4,7 +4,11 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+from .paths import legacy_config_paths, user_config_path
+
+# Frozen builds keep this in a per-user directory; see app/paths.py for why the
+# bundle itself is not writable.
+CONFIG_FILE = user_config_path()
 
 
 # Supported database types shown in dropdown -> (display name, type code, default port)
@@ -107,13 +111,25 @@ class ConfigManager:
         self.load()
 
     # ----- I/O -----
+    def _read_raw(self) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Read the config JSON, falling back to pre-`.app` locations.
+
+        Returns ``(raw, migrated)`` where ``migrated`` is True when the data came
+        from a legacy path and should be written back to ``self.path``.
+        """
+        for path, is_legacy in [(self.path, False)] + [(p, True) for p in legacy_config_paths()]:
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f), is_legacy
+            except Exception:
+                continue
+        return None, False
+
     def load(self) -> None:
-        if not os.path.exists(self.path):
-            return
-        try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception:
+        raw, migrated = self._read_raw()
+        if raw is None:
             return
 
         merged = json.loads(json.dumps(DEFAULT_CONFIG))
@@ -144,6 +160,13 @@ class ConfigManager:
 
         self.data = merged
 
+        # Persist into the writable location so the legacy copy is only read once.
+        if migrated:
+            try:
+                self.save()
+            except Exception:
+                pass
+
     def save(self) -> None:
         # Deep-copy and obfuscate secrets before writing
         out = json.loads(json.dumps(self.data))
@@ -155,6 +178,7 @@ class ConfigManager:
         out.pop("ai_config", None)
 
         try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
             with open(self.path, "w", encoding="utf-8") as f:
                 json.dump(out, f, ensure_ascii=False, indent=2)
         except Exception as e:

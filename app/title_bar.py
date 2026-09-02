@@ -11,11 +11,12 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QWidget
 
 from .donate_dialog import DonateDialog
+from .paths import resource_path
 
 
 GITHUB_REPO_URL = "https://github.com/vfaner/Text2SQL_Assistant"
 
-ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+ASSETS_DIR = resource_path("assets")
 
 
 # -------------- Icon drawing helpers --------------
