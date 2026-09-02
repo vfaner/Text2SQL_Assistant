@@ -1,9 +1,13 @@
 name: Build & Release
 
 # ─────────────────────────────────────────────────────────────
-# Triggered by pushing a tag like `v1.0.0`. Builds Windows / macOS / Linux
-# single-file executables in parallel with PyInstaller, then publishes them
-# as attachments on the GitHub Release matching that tag.
+# Triggered by pushing a tag like `v1.0.0`. Builds Windows / Linux single-file
+# executables and a macOS .app-in-a-DMG in parallel with PyInstaller, then
+# publishes them as attachments on the GitHub Release matching that tag.
+#
+# macOS ships a bundle rather than a bare executable on purpose: Gatekeeper
+# gives no approval path for an unsigned bare Unix executable — its warning
+# dialog only offers "Move to Trash". See scripts/build_macos.sh.
 #
 # Manual dispatch is also allowed for smoke-testing without cutting a release
 # (in that case artifacts are uploaded to the workflow run only).
@@ -37,7 +41,7 @@ jobs:
           - os: macos-latest
             asset_name: Text2SQL_Assistant-macos-arm64
             binary_ext: ""
-            archive_cmd: zip
+            archive_cmd: dmg
 
     steps:
       - name: Checkout
@@ -77,26 +81,31 @@ jobs:
           pip install pyinstaller
 
       # ── Build ────────────────────────────────────────────────────────
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (Windows / Linux)
+        if: runner.os != 'macOS'
         run: pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
 
-      # ── Package (zip on win/mac, tar.gz on linux) ─────────────────────
+      # Runs PyInstaller, clears extended attributes, ad-hoc signs the bundle,
+      # then wraps it in a DMG with a drag-to-install Applications symlink.
+      - name: Build, sign & package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          chmod +x scripts/build_macos.sh
+          ./scripts/build_macos.sh
+
+      # ── Package (tar.gz on Linux, zip on Windows; macOS already made a DMG) ──
       - name: Package (Linux, tar.gz)
         if: matrix.archive_cmd == 'tar_gz'
         run: |
           cd dist
           tar -czvf "${{ matrix.asset_name }}.tar.gz" "Text2SQL_Assistant${{ matrix.binary_ext }}"
 
-      - name: Package (macOS/Windows, zip)
+      - name: Package (Windows, zip)
         if: matrix.archive_cmd == 'zip'
         shell: bash
         run: |
           cd dist
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            7z a "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
-          else
-            zip "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
-          fi
+          7z a "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -105,6 +114,7 @@ jobs:
           path: |
             dist/${{ matrix.asset_name }}.zip
             dist/${{ matrix.asset_name }}.tar.gz
+            dist/${{ matrix.asset_name }}.dmg
           if-no-files-found: ignore
           retention-days: 14
 
@@ -142,15 +152,55 @@ jobs:
             | 平台        | 文件                                                      |
             |-------------|-----------------------------------------------------------|
             | Windows x64 | `Text2SQL_Assistant-windows-x86_64.zip`                   |
-            | macOS arm64 | `Text2SQL_Assistant-macos-arm64.zip`                      |
+            | macOS arm64 | `Text2SQL_Assistant-macos-arm64.dmg`                      |
             | Linux x64   | `Text2SQL_Assistant-linux-x86_64.tar.gz`                  |
 
-            > macOS 上首次运行如遇 Gatekeeper 拦截，右键点击应用 → 打开 → 允许即可。
-            > Linux 上解包后执行 `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant`。
+            ### macOS 首次运行
+
+            应用未经 Apple 公证，首次打开需手动放行一次（此后双击即可）：
+
+            1. 双击 DMG，把 `Text2SQL_Assistant.app` 拖到「应用程序」
+            2. 双击应用，会出现「无法验证开发者」提示，点**完成**
+            3. 打开**系统设置 → 隐私与安全性**，向下滚动，点被拦应用旁的**仍要打开**
+            4. 再弹一个确认框，点里面的**打开**（可能需要 Touch ID 或密码）
+            5. 应用启动，此后双击直接打开，不再提示
+
+            > 第 2 步弹窗只有「完成」和「移到废纸篓」，这是未公证应用的正常表现，
+            > 放行入口在第 3 步的系统设置里。
+            >
+            > macOS 15 (Sequoia) 起 Apple 已移除「右键 → 打开」的绕过方式，
+            > 上面的系统设置路径是当前唯一的图形放行入口。
+            >
+            > 也可用命令行一步搞定：
+            > `xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app`
+
+            ### Windows 首次运行
+
+            exe 未做代码签名，从浏览器下载的 zip 带 Mark-of-the-Web 标记，
+            解压出的 exe 会被 SmartScreen 拦一次（此后双击即可）：
+
+            1. 双击 exe，弹出「**Windows 已保护你的电脑**」
+            2. 该弹窗默认只有「不运行」，点左下角「**更多信息**」
+            3. 展开后点「**仍要运行**」
+
+            > 也可以在解压前右键 zip → 属性 → 勾选「**解除锁定**」，就不会被拦。
+            >
+            > 首次启动要解包约 46 MB 到临时目录，有几秒没窗口是正常的。
+
+            ### Linux 运行
+
+            ```bash
+            tar -xzvf Text2SQL_Assistant-linux-x86_64.tar.gz
+            chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant
+            ```
+
+            > 若报 `could not load the Qt platform plugin "xcb"`，补装 Qt 依赖的 X11 库：
+            > `sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libdbus-1-3`
 
             更多说明请见仓库 [README](https://github.com/vfaner/Text2SQL_Assistant/blob/main/README.md)。
           files: |
             artifacts/**/*.zip
             artifacts/**/*.tar.gz
+            artifacts/**/*.dmg
           draft: false
           prerelease: false
