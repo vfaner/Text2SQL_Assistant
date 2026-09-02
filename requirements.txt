@@ -5,8 +5,11 @@ PySide6>=6.5.0
 SQLAlchemy>=2.0.0
 
 # HTTP / AI
+# Both AI protocols (OpenAI-compatible and Anthropic) are spoken over plain
+# HTTP in app/ai_providers.py, so no vendor SDK is needed. Deliberately not
+# depending on `openai` — nothing imports it, and PyInstaller would have to
+# tree-shake ~15 MB back out of every build.
 requests>=2.31.0
-openai>=1.10.0
 
 # SQL formatting
 sqlparse>=0.4.4
@@ -16,8 +19,16 @@ sqlparse>=0.4.4
 PyMySQL>=1.1.0
 # PostgreSQL / OpenGauss / KingbaseES (compatible)
 psycopg2-binary>=2.9.7
-# SQL Server
-pyodbc>=5.0.0
+#
+# The drivers below are NOT installed by default: each needs a system-level
+# library or vendor download that pip cannot provide, so requiring them here
+# would just break `pip install -r requirements.txt` on a clean machine.
+# Uncomment the one you need.
+#
+# SQL Server — also needs unixODBC plus a Microsoft ODBC driver:
+#   macOS: brew install unixodbc && brew install msodbcsql18
+#   Linux: apt-get install unixodbc msodbcsql18
+# pyodbc>=5.0.0
 # Oracle (requires Oracle Instant Client)
 # cx_Oracle>=8.3.0
 # Dameng
@@ -25,5 +36,6 @@ pyodbc>=5.0.0
 # ShenTong / GBase (jaydebeapi as bridge, optional)
 # jaydebeapi>=1.2.3
 
-# Optional stronger encryption
-cryptography>=41.0.0
+# Optional: only needed if you replace the base64 obfuscation in app/config.py
+# with real encryption. Nothing imports it as shipped.
+# cryptography>=41.0.0
