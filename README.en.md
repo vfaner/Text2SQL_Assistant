@@ -11,17 +11,71 @@ A desktop application built with **PySide6** that turns **natural-language quest
 
 ## 📦 Grab a pre-built binary (no Python required)
 
-Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/Text2SQL_Assistant/releases)**, download the archive for your platform, unpack it, and **double-click to run**. No Python, no dependencies, no `pip install`.
+Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/Text2SQL_Assistant/releases)** and grab the build for your platform. No Python, no dependencies, no `pip install`. None of the three builds are code-signed, so Windows and macOS both need a one-time manual approval on first launch (once each, never again afterwards) — steps below.
 
 | Platform | Download | How to run |
 |----------|----------|------------|
-| **Windows x64** | `Text2SQL_Assistant-windows-x86_64.zip` | Unzip → double-click `Text2SQL_Assistant.exe` |
-| **macOS (Apple Silicon)** | `Text2SQL_Assistant-macos-arm64.zip` | Unzip → double-click. If Gatekeeper blocks it, right-click → Open → Allow. |
+| **Windows x64** | `Text2SQL_Assistant-windows-x86_64.zip` | Unzip → double-click `Text2SQL_Assistant.exe`. SmartScreen blocks it once, see below. |
+| **macOS (Apple Silicon)** | `Text2SQL_Assistant-macos-arm64.dmg` | Mount → drag to Applications → double-click. Needs a one-time approval, see below. |
 | **Linux x64** | `Text2SQL_Assistant-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant` |
 
 > 👉 **Latest release**: https://github.com/vfaner/Text2SQL_Assistant/releases/latest
 >
 > The "run from source" instructions below are only needed if you want to modify the code, contribute, or run on a target we don't yet ship binaries for (e.g. Intel Macs).
+
+### 🪟 First launch on Windows needs a one-time approval
+
+The executable is **not code-signed** (an EV code-signing certificate costs several hundred dollars a year). A zip downloaded through a browser is tagged with the Mark-of-the-Web, the extracted exe inherits that tag, and Microsoft Defender SmartScreen blocks it once:
+
+1. Double-click the exe → **"Windows protected your PC"** appears
+2. That dialog only shows a "Don't run" button by default — click **More info** in the lower left
+3. A **Run anyway** button appears — click it
+4. The app launches. Every launch after this is a plain double-click, with no prompt.
+
+> Alternatively, before unzipping: right-click the zip → Properties → tick **Unblock** at the bottom. The extracted exe then carries no tag and won't be blocked at all.
+>
+> First launch unpacks roughly 46 MB into a temp directory, so expect a few seconds with no window. That's normal.
+
+### 🍎 First launch on macOS needs a one-time approval
+
+The app is **not notarized by Apple** (notarization requires a $99/year Apple Developer membership), so macOS blocks it the first time. To approve it:
+
+1. Open the DMG and drag `Text2SQL_Assistant.app` into Applications
+2. Double-click the app → you'll get *"Apple could not verify…"* → click **Done** (**not** "Move to Trash")
+3. Open **System Settings → Privacy & Security**, scroll to the Security section, and click **Open Anyway** next to the app's name
+4. A second confirmation dialog appears — click **Open** in it; macOS may ask for Touch ID or your login password
+5. The app launches. **Every launch after this one is a plain double-click, with no prompt at all.**
+
+> The dialog in step 2 only offers "Done" and "Move to Trash" — **that is expected**. Any
+> unnotarized app behaves this way; the approval lives in System Settings (step 3), not in
+> that dialog.
+
+> ⚠️ The widely-cited **right-click → Open** trick was **removed by Apple in macOS 15 (Sequoia)**.
+> The System Settings path above is currently the only way to approve an unnotarized app.
+
+If you'd rather do it in one command, strip the quarantine flag and then double-click normally:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app
+```
+
+### 🐧 Running on Linux
+
+Linux has no signature gate, but you do need to add the executable bit after unpacking (and most file managers won't let you double-click a bare binary anyway):
+
+```bash
+tar -xzvf Text2SQL_Assistant-linux-x86_64.tar.gz
+chmod +x Text2SQL_Assistant
+./Text2SQL_Assistant
+```
+
+If you hit `could not load the Qt platform plugin "xcb"`, your system is missing the X11 libraries Qt needs (Debian / Ubuntu):
+
+```bash
+sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
+  libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+  libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libdbus-1-3
+```
 
 ---
 
@@ -64,7 +118,14 @@ Text2SQL_Assistant/
 ├── README.md                      # Chinese README
 ├── README.en.md                   # This file
 ├── LICENSE                        # MIT License
+├── Text2SQL_Assistant.spec        # PyInstaller config (.app on macOS, one-file elsewhere)
+├── scripts/
+│   ├── build_macos.sh             # macOS build + ad-hoc sign + DMG
+│   └── make_icons.py              # Generates .icns / .ico from the master art
 ├── assets/                        # Icons, QR codes, screenshots
+│   ├── app_icon.png               # 1024x1024 master icon (also the Qt window icon)
+│   ├── app_icon.icns              # macOS bundle icon (generated)
+│   ├── app_icon.ico               # Windows executable icon (generated)
 │   ├── github.svg
 │   ├── donate.png
 │   ├── alipay.png
@@ -75,6 +136,7 @@ Text2SQL_Assistant/
 │   └── ai_config.png
 └── app/
     ├── __init__.py
+    ├── paths.py                   # Resource / config path resolution (source vs frozen)
     ├── config.py                  # config.json I/O, DB / AI catalogs
     ├── db.py                      # SQLAlchemy URL builders, pagination, execution, pre-check
     ├── ai_providers.py            # OpenAI + Anthropic dual-protocol adapter
@@ -170,7 +232,18 @@ Grouped by wire protocol:
 
 ## Configuration
 
-`config.json` is auto-loaded from the working directory on startup (see `config.example.json` for a template). Passwords and API keys are stored with a `b64:` prefix — this is obfuscation, **not** real encryption. For production-grade secrets management, swap it out for `cryptography` or your system keyring.
+Where `config.json` lives depends on how you run the app:
+
+| How you run it | `config.json` location |
+|----------------|------------------------|
+| From source | Project root (see `config.example.json` for a template) |
+| macOS build | `~/Library/Application Support/Text2SQL_Assistant/` |
+| Windows build | `%APPDATA%\Text2SQL_Assistant\` |
+| Linux build | `$XDG_CONFIG_HOME/text2sql-assistant/` (defaults to `~/.config/…`) |
+
+Packaged builds **cannot** keep config next to the executable: writing inside a macOS `.app` invalidates its code signature and the bundle stops launching, and a one-file build's runtime directory is a temp dir that's deleted on exit. That's exactly why older builds lost your settings on every restart — config from the old location is now migrated automatically, so there's nothing to move by hand.
+
+Passwords and API keys are stored with a `b64:` prefix — this is obfuscation, **not** real encryption. For production-grade secrets management, swap it out for `cryptography` or your system keyring.
 
 ---
 
@@ -198,20 +271,40 @@ Grouped by wire protocol:
 
 ## Packaging (optional)
 
+Packaging is driven by `Text2SQL_Assistant.spec`, which produces a different artifact per platform. Don't use a bare `pyinstaller -F main.py` — it drops the bundled assets and the macOS bundle structure.
+
+**Windows / Linux** — single-file executable:
+
 ```bash
 pip install pyinstaller
-pyinstaller -F -w -n Text2SQL_Assistant main.py
+pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
+# → dist/Text2SQL_Assistant[.exe]
 ```
 
-The `-w` flag hides the console window on Windows / macOS.
+**macOS** — `.app` bundle wrapped in a DMG; the script also ad-hoc signs it:
+
+```bash
+pip install pyinstaller
+./scripts/build_macos.sh
+# → dist/Text2SQL_Assistant.app
+#   dist/Text2SQL_Assistant-macos-arm64.dmg
+```
+
+Shipping a `.app` on macOS isn't cosmetic: Gatekeeper offers **no** approval path for an unsigned bare Unix executable — its warning dialog only has "Move to Trash", so users simply cannot run it.
+
+If you have an Apple Developer membership ($99/year), follow the two `TODO(notarize)` comments in `scripts/build_macos.sh` to sign with a real Developer ID and add the `notarytool` / `stapler` steps. Users then get **no prompt at all**.
+
+**Changing the icon**: replace `assets/app_icon.png` (1024x1024, transparent rounded corners), then run `python scripts/make_icons.py` to regenerate the `.icns` and `.ico`. The script shells out to macOS's built-in `sips` / `iconutil`, so it needs no third-party libraries.
 
 ---
 
 ## Known limitations
 
+- **The prebuilt binaries on Releases only bundle the MySQL and PostgreSQL drivers** (`PyMySQL` / `psycopg2`) — those two work out of the box. SQL Server, Oracle, Dameng and friends need a system-level library or a vendor download that can't be embedded in a single executable, so for those you'll need to run from source and install the driver yourself (see the comments in `requirements.txt`).
 - Driver availability for Chinese domestic databases (DM / GBase / ShenTong / KingbaseES) varies — the app only builds the URL and surfaces install hints; it does not download drivers for you.
 - Pagination wraps user SQL in a `SELECT * FROM (...) __t` subquery, which works for the vast majority of statements but may need manual pagination for very unusual SQL.
 - No safety guardrails — `DROP TABLE users;` will drop it. This is by design for dev/test workflows; add role-based access control at the database level for shared environments.
+- The macOS build is not notarized by Apple, so it needs a one-time manual approval on first launch (see above). Notarization requires a $99/year Apple Developer membership.
 
 ---
 
