@@ -95,11 +95,12 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 ## Features
 
 - **Natural language → SQL**: describe your query in plain language, let the AI generate SQL in the target dialect, **let the app pre-check the output** (empty / prose / unbalanced quotes / missing SQL keyword), edit if needed, execute in one click.
+- **Grounded in your real schema**: when you pick a data source, the app automatically reads its tables, columns, primary/foreign keys and comments and sends them with your question — the model picks among the *actual* table/column names and writes JOINs from the real foreign keys, instead of guessing names like `student` or `score`. With many tables it ranks them against the question (CJK bigram matching for queries like "数学" / "三年级") and shows how many were included.
 - **Multi-database**: MySQL, PostgreSQL, Oracle, SQL Server, OpenGauss, DM (Dameng), KingbaseES, GBase, ShenTong — plus a "custom" option for any SQLAlchemy URL.
 - **Multiple AI configs, switch on the fly**: manage several AI configs like data sources (new / edit / delete / test / mark current), switch the active one from a dropdown on the main page.
 - **Two protocols, many vendors**:
   - **OpenAI-compatible `/chat/completions`** — OpenAI, Aliyun Bailian, Qwen, Volcengine ARK, Doubao, DeepSeek, Baidu Qianfan (ERNIE), Zhipu GLM, Kimi (Moonshot), Shengsuanyun, GitHub Copilot / Models, custom.
-  - **Anthropic-compatible `/messages`** — Anthropic Claude, Volcengine ARK Anthropic endpoint, custom.
+  - **Anthropic-compatible `/messages`** — Anthropic Claude, Volcengine ARK (the same single vendor entry as above; just flip the protocol dropdown to Anthropic and the URL rewrites itself), custom.
 - **Clean error UX**: SQL execution errors surface in a dedicated dialog with a **Close button** and scrollable detail; stale results are cleared automatically; a one-line error summary is shown in the result panel.
 - **SELECT / DML / DDL**: SELECTs render as a paginated table; INSERT/UPDATE/DELETE/DDL report the affected row count and command status.
 - **Persistent config**: data sources and AI settings are stored in `config.json`; passwords and API keys are base64-encoded (obfuscation, not real encryption); older configs auto-migrate.
@@ -121,9 +122,11 @@ Text2SQL_Assistant/
 ├── Text2SQL_Assistant.spec        # PyInstaller config (.app on macOS, one-file elsewhere)
 ├── scripts/
 │   ├── build_macos.sh             # macOS build + ad-hoc sign + DMG
+│   ├── prepare_icon.py            # Cuts the rounded plate out of a photo-background JPG
 │   └── make_icons.py              # Generates .icns / .ico from the master art
 ├── assets/                        # Icons, QR codes, screenshots
-│   ├── app_icon.png               # 1024x1024 master icon (also the Qt window icon)
+│   ├── icon.jpg                   # Original icon artwork (input when changing the icon)
+│   ├── app_icon.png               # 1024x1024 master icon generated from the artwork (also the Qt window icon)
 │   ├── app_icon.icns              # macOS bundle icon (generated)
 │   ├── app_icon.ico               # Windows executable icon (generated)
 │   ├── github.svg
@@ -186,11 +189,12 @@ The window auto-centers on the current screen at startup.
    - Select any entry in the list → **设为当前使用 (Set as current)**, or switch it from the AI dropdown on the Text2SQL page.
 2. Open **数据源配置 (Data source config)**: click **新建 (New)**, choose a database type, fill connection info → **测试连接 (Test connection)** → **保存当前 (Save)**.
 3. Back to **Text2SQL**:
-   - Pick the data source and AI config from the toolbar dropdowns.
-   - Type your question in the "自然语言描述" (Natural-language description) area, e.g. *"Find customers whose sales exceed 1000 and their total order amount"*.
-   - Click **生成 SQL (Generate SQL)** — the app pre-checks the model's output first; if it passes, SQL appears in the middle editor and can be edited.
+   - Pick the data source and AI config from the toolbar dropdowns. Selecting a data source automatically reads its schema and shows "表结构：已载入 N 张表" (N tables loaded; use "重新读取表结构" to force a refresh after schema changes).
+   - Type your question in the "自然语言描述" (Natural-language description) area, e.g. *"查询三年级数学 60 分以上的学生信息"* (students in grade 3 with a math score above 60).
+   - Click **生成 SQL (Generate SQL)** — the model works from the real table/column names, then the app pre-checks the output; SQL appears in the middle editor and can be edited.
    - Click **执行 SQL (Execute SQL)** — the result appears below; SELECTs are paginated.
    - If execution fails, a dedicated error dialog pops up (with a Close button and scrollable detail); the previous result is cleared automatically.
+   - Note: with no data source selected the model cannot see any schema and falls back to invented placeholder names — always pick a data source and review the SQL yourself.
 4. The in-app **软件说明 (Help)** tab has the full usage guide.
 
 The **Execute SQL** button stays disabled until a data source is selected.
@@ -208,7 +212,7 @@ Grouped by wire protocol:
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
 | Aliyun Bailian (Qwen) | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-max` |
 | Qwen | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
-| Volcengine ARK · OpenAI | `https://ark.cn-beijing.volces.com/api/plan/v3` | `ark-code-latest` |
+| Volcengine ARK (Coding Plan) | `https://ark.cn-beijing.volces.com/api/coding/v3` | `ark-code-latest` |
 | Doubao | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-pro-32k` |
 | DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | Baidu Qianfan (ERNIE) | `https://qianfan.baidubce.com/v2` | `ernie-4.0-turbo-8k` |
@@ -223,10 +227,12 @@ Grouped by wire protocol:
 | Vendor | Default base URL | Default model |
 |--------|------------------|---------------|
 | Anthropic Claude | `https://api.anthropic.com/v1` | `claude-3-5-sonnet-latest` |
-| Volcengine ARK · Anthropic | `https://ark.cn-beijing.volces.com/api/plan` | `ark-code-latest` |
+| Volcengine ARK (same vendor; auto-filled when you switch to the Anthropic protocol) | `https://ark.cn-beijing.volces.com/api/coding` | `ark-code-latest` |
 | Anthropic-compatible (custom) | (user-provided) | (user-provided) |
 
-> Selecting a vendor auto-fills **Protocol**, **Base URL** and **Default model**. You can also manually flip the Protocol dropdown between OpenAI and Anthropic — useful for third-party compatibility gateways (LiteLLM, OpenRouter, etc.) that aren't in the preset list.
+> Selecting a vendor auto-fills **Protocol**, **Base URL** and **Default model**. Vendors that support both protocols (e.g. Volcengine ARK) appear only once, and flipping the Protocol dropdown **rewrites the API address to the matching endpoint**. You can also switch protocol manually for third-party compatibility gateways (LiteLLM, OpenRouter, etc.) that aren't in the preset list.
+>
+> URL assembly follows the official SDKs: an OpenAI base URL must include the version segment (e.g. `…/api/coding/v3`, the app appends `/chat/completions`); an Anthropic base URL is filled down to the root (e.g. `…/api/coding`, exactly like Claude Code's `ANTHROPIC_BASE_URL`, and the app appends `/v1/messages`; if the base already ends in `/v1`, only `/messages` is appended).
 
 ---
 
@@ -294,7 +300,11 @@ Shipping a `.app` on macOS isn't cosmetic: Gatekeeper offers **no** approval pat
 
 If you have an Apple Developer membership ($99/year), follow the two `TODO(notarize)` comments in `scripts/build_macos.sh` to sign with a real Developer ID and add the `notarytool` / `stapler` steps. Users then get **no prompt at all**.
 
-**Changing the icon**: replace `assets/app_icon.png` (1024x1024, transparent rounded corners), then run `python scripts/make_icons.py` to regenerate the `.icns` and `.ico`. The script shells out to macOS's built-in `sips` / `iconutil`, so it needs no third-party libraries.
+**Changing the icon**:
+- Source is already a **square icon on a transparent background**: run `python3 scripts/make_icons.py your.png` — it normalizes the image to the 1024x1024 master `assets/app_icon.png` (also the Qt window icon) and regenerates the `.icns` / `.ico`.
+- Source is a **JPG on a photo background** (like the current `assets/icon.jpg`, with white margins and a drop shadow around the plate): first run `python3 scripts/prepare_icon.py assets/icon.jpg` to cut the rounded plate out onto a transparent master, then `python3 scripts/make_icons.py`. The cut-out geometry constants are measured against the current artwork and need remeasuring for a differently composed source.
+
+Both scripts shell out to macOS's built-in `sips` / `iconutil` (prepare also uses the already-installed PySide6), so no extra imaging library is needed.
 
 ---
 

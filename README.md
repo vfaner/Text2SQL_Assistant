@@ -94,11 +94,12 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 ## 功能亮点
 
 - **Text2SQL**：自然语言输入 → AI 生成 SQL → **自动预检**（防止 AI 返回散文 / 括号不匹配等）→ 手动可编辑 → 一键执行；查询以表格 + 分页展示，非查询显示受影响行数。
+- **基于真实表结构生成**：选中数据源后，应用会自动读取库中表、列、主外键和中文注释并随问题一起发给 AI —— AI 在你**真实的**表名 / 字段里做选择并按外键写 JOIN，而不是凭空猜 `student`、`score` 之类的名字。表很多时按问题相关性筛选（中文按二元词组匹配，如“数学”“三年级”），并在界面提示已载入多少张表。
 - **多数据库支持**：MySQL、PostgreSQL、Oracle、SQL Server、OpenGauss、达梦（DM）、人大金仓（KingbaseES）、南大通用（GBase）、神通（ShenTong），以及自定义 SQLAlchemy URL。
 - **多 AI 配置 · 一键切换**：像数据源一样可以配置多份 AI（新建 / 编辑 / 删除 / 测试调用 / 设为当前），主界面顶部下拉切换。
 - **双协议 · 多厂商**：
   - **OpenAI 兼容 `/chat/completions`**：OpenAI、阿里百炼、千问、火山引擎 ARK、豆包、DeepSeek、百度千帆（ERNIE）、智谱 GLM、Kimi（Moonshot）、胜算云、GitHub Copilot/Models，以及自定义。
-  - **Anthropic 兼容 `/messages`**：Anthropic Claude、火山引擎 ARK Anthropic 协议入口，以及自定义。
+  - **Anthropic 兼容 `/messages`**：Anthropic Claude、火山引擎 ARK（与上面是同一个厂商，协议下拉切到 Anthropic 即可，地址自动改写），以及自定义。
 - **友好错误处理**：SQL 执行失败弹独立错误对话框（可关闭 / 可滚动），旧结果不会残留；错误摘要提取一行显示。
 - **配置管理**：数据源和 AI 配置持久化到 `config.json`；密码、API Key 使用 base64 编码存储；老配置自动迁移。
 - **现代化 UI**：自绘无边框标题栏、右上角 GitHub / 捐赠按钮，Vue element-plus 风格的 Toast 通知，圆角、柔和配色，启动窗口自动居中。
@@ -118,9 +119,11 @@ Text2SQL_Assistant/
 ├── Text2SQL_Assistant.spec        # PyInstaller 配置（macOS 出 .app，Win/Linux 出单文件）
 ├── scripts/
 │   ├── build_macos.sh             # macOS 构建 + ad-hoc 签名 + 打 DMG
+│   ├── prepare_icon.py            # 从带背景的素材抠出透明底圆角母版
 │   └── make_icons.py              # 由母图生成 .icns / .ico
 ├── assets/                        # 图标、二维码、截图
-│   ├── app_icon.png               # 1024x1024 应用图标母图（也用作 Qt 窗口图标）
+│   ├── icon.jpg                   # 图标原始素材（换图时的输入）
+│   ├── app_icon.png               # 1024x1024 应用图标母图（由素材生成，也用作 Qt 窗口图标）
 │   ├── app_icon.icns              # macOS bundle 图标（由母图生成）
 │   ├── app_icon.ico               # Windows 可执行文件图标（由母图生成）
 │   ├── github.svg
@@ -184,11 +187,12 @@ python main.py
    - 在列表中选中某份 → 点 **设为当前使用** 即可切换（也可以在 Text2SQL 页顶部下拉直接切）
 2. 打开 **数据源配置**：点 **新建**，选数据库类型，填写连接信息 → **测试连接** → **保存当前**
 3. 回到 **Text2SQL**：
-   - 顶部选择数据源和要使用的 AI 配置
-   - 在“自然语言描述”中输入需求（例如 “查询销售额大于 1000 的客户名称和订单总额”）
-   - 点 **生成 SQL** → 系统对返回内容做一次预检 → 通过后填入中间编辑区，可手动改
+   - 顶部选择数据源和要使用的 AI 配置；选中数据源后会自动读取表结构，提示“表结构：已载入 N 张表”（改了表结构可点“重新读取表结构”）
+   - 在“自然语言描述”中输入需求（例如 “查询三年级数学 60 分以上的学生信息”）
+   - 点 **生成 SQL** → AI 基于真实表名 / 字段生成，系统再做一次预检 → 通过后填入中间编辑区，可手动改
    - 点 **执行 SQL** → 结果显示在下方；SELECT 支持分页翻页
    - 若 SQL 执行失败，会弹出独立错误弹窗（有关闭按钮，可滚动查看完整报错），旧结果自动清空
+   - 提示：未选数据源时 AI 看不到表结构，只能凭占位名生成，请务必先选数据源并人工核对 SQL
 4. 详细使用说明也可以在应用内的 **软件说明** 页查看。
 
 “执行 SQL” 按钮在未选择数据源时会置灰。
@@ -206,7 +210,7 @@ python main.py
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
 | 阿里百炼（Qwen） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-max` |
 | 千问（Qwen） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
-| 火山引擎 ARK · OpenAI 协议 | `https://ark.cn-beijing.volces.com/api/plan/v3` | `ark-code-latest` |
+| 火山引擎 ARK（Coding Plan） | `https://ark.cn-beijing.volces.com/api/coding/v3` | `ark-code-latest` |
 | 豆包（Doubao） | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-pro-32k` |
 | DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | 百度千帆（ERNIE） | `https://qianfan.baidubce.com/v2` | `ernie-4.0-turbo-8k` |
@@ -221,10 +225,12 @@ python main.py
 | 厂商 | 默认 Base URL | 默认模型 |
 |------|--------------|---------|
 | Anthropic Claude | `https://api.anthropic.com/v1` | `claude-3-5-sonnet-latest` |
-| 火山引擎 ARK · Anthropic 协议 | `https://ark.cn-beijing.volces.com/api/plan` | `ark-code-latest` |
+| 火山引擎 ARK（同一厂商，切到 Anthropic 协议时自动填充） | `https://ark.cn-beijing.volces.com/api/coding` | `ark-code-latest` |
 | 兼容 Anthropic 协议（自定义） | 用户填写 | 用户填写 |
 
-> 选择厂商后，**协议**、**Base URL**、**默认模型** 会自动填充；也可以手动在“协议”下拉里在两种协议之间切换，用于对接不在预置列表中的第三方兼容网关（LiteLLM / OpenRouter 等）。
+> 选择厂商后，**协议**、**Base URL**、**默认模型** 会自动填充。火山方舟等同时支持两种协议的厂商在列表中只有一项，在“协议”下拉里切换时会**自动换成对应协议的 API 地址**；也可以手动切换协议对接不在预置列表中的第三方兼容网关（LiteLLM / OpenRouter 等）。
+>
+> URL 拼接规则与官方 SDK 一致：OpenAI 地址需包含版本段（如 `…/api/coding/v3`，程序补 `/chat/completions`）；Anthropic 地址填到根即可（如 `…/api/coding`，与 Claude Code 的 `ANTHROPIC_BASE_URL` 写法相同，程序自动补 `/v1/messages`；若地址已以 `/v1` 结尾则只补 `/messages`）。
 
 ---
 
@@ -281,7 +287,11 @@ macOS 必须打成 `.app` 而不是裸可执行文件：Gatekeeper **不给**未
 
 若你有 Apple Developer 会员（$99/年），把 `scripts/build_macos.sh` 里两处 `TODO(notarize)` 按注释改成真实 Developer ID 并加上 `notarytool` / `stapler` 两步，用户即可**零提示**直接双击运行。
 
-**换图标**：只需替换 `assets/app_icon.png`（1024x1024、带透明圆角），然后跑 `python scripts/make_icons.py` 重新生成 `.icns` 和 `.ico`（该脚本依赖 macOS 自带的 `sips` / `iconutil`，无需第三方库）。
+**换图标**：
+- 素材本身是**透明底方形图标**：跑 `python3 scripts/make_icons.py 你的图.png`，脚本会归一化生成 1024x1024 母版 `assets/app_icon.png`（Qt 窗口图标），再重新生成 `.icns` / `.ico`。
+- 素材是**带照片背景的 JPG**（如现在的 `assets/icon.jpg`，图标外面有白边和投影）：先跑 `python3 scripts/prepare_icon.py assets/icon.jpg` 抠出圆角方块本体、生成透明底母版，再跑 `python3 scripts/make_icons.py`。注意抠图脚本的几何参数是按当前素材量好的，换了构图不同的素材需要重新调整。
+
+两个脚本都依赖 macOS 自带的 `sips` / `iconutil`（prepare 还用到项目已装的 PySide6），无需额外图像库。
 
 ---
 
