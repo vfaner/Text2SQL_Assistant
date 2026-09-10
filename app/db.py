@@ -9,11 +9,12 @@ may require adjustments in the `params` (e.g. driver, charset, service_name).
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
 
@@ -115,6 +116,229 @@ def test_connection(ds: Dict[str, Any]) -> Tuple[bool, str]:
         return False, f"缺少驱动: {e}\n请安装: {hint.get('install', '')}"
     except Exception as e:
         return False, f"连接失败: {e}"
+    finally:
+        try:
+            engine.dispose()
+        except Exception:
+            pass
+
+
+# --- Schema introspection (for schema-aware text-to-SQL) ---
+
+# Hard caps so a database with thousands of tables can't blow the prompt. When
+# the schema is larger than this, tables are ranked against the user's question
+# and only the most relevant ones are sent (see build_schema_section).
+MAX_SCHEMA_TABLES = 200
+MAX_SCHEMA_CHARS = 20000
+
+
+def introspect_schema(engine: Engine) -> List[Dict[str, Any]]:
+    """Return a dialect-neutral description of tables/views in the default schema.
+
+    Uses SQLAlchemy's Inspector rather than per-dialect ``information_schema``
+    SQL, so MySQL / PostgreSQL / Oracle / SQL Server / the PG-compatible
+    domestic databases all go through the same code path. Anything a given
+    dialect can't provide (column comments are not introspected on PostgreSQL,
+    for instance) simply degrades to empty instead of failing.
+    """
+    insp = inspect(engine)
+
+    names: List[Tuple[str, str]] = [(n, "table") for n in insp.get_table_names()]
+    get_views = getattr(insp, "get_view_names", None)
+    if callable(get_views):
+        try:
+            names += [(n, "view") for n in get_views()]
+        except Exception:
+            pass
+
+    tables: List[Dict[str, Any]] = []
+    for name, kind in names:
+        try:
+            raw_cols = insp.get_columns(name)
+        except Exception:
+            raw_cols = []
+        columns = [
+            {
+                "name": c.get("name", ""),
+                "type": str(c["type"]) if c.get("type") is not None else "",
+                "nullable": c.get("nullable", True),
+                # Only some dialects (notably MySQL) report column comments.
+                "comment": c.get("comment") or "",
+            }
+            for c in raw_cols
+        ]
+
+        try:
+            pk = list(insp.get_pk_constraint(name).get("constrained_columns") or [])
+        except Exception:
+            pk = []
+        try:
+            raw_fks = insp.get_foreign_keys(name)
+        except Exception:
+            raw_fks = []
+        fks = [
+            {
+                "cols": list(fk.get("constrained_columns") or []),
+                "ref_table": fk.get("referred_table") or "",
+                "ref_cols": list(fk.get("referred_columns") or []),
+            }
+            for fk in raw_fks
+            if fk.get("referred_table")
+        ]
+
+        comment = ""
+        try:
+            comment = (insp.get_table_comment(name) or {}).get("text") or ""
+        except Exception:
+            pass
+
+        tables.append(
+            {"name": name, "kind": kind, "comment": comment, "pk": pk,
+             "columns": columns, "fks": fks}
+        )
+    return tables
+
+
+def render_table(t: Dict[str, Any]) -> str:
+    """Render one table/view as CREATE TABLE-style DDL for the model's context.
+
+    This is LLM context, not something we ever execute, so comments are attached
+    as trailing ``--`` lines rather than dialect-specific ``COMMENT ON`` syntax.
+    Views are written to look like tables because the model only needs to know
+    they can be SELECTed with these columns.
+    """
+    is_view = t.get("kind") == "view"
+    head = f"-- 视图（可直接 SELECT）: {t['name']}" if is_view else f"-- 表: {t['name']}"
+    if t.get("comment"):
+        head += f"  {t['comment']}"
+
+    pk = set(t.get("pk") or [])
+    lines = []
+    for c in t.get("columns", []):
+        line = f"  {c['name']} {c.get('type') or 'TEXT'}"
+        if c.get("nullable") is False:
+            line += " NOT NULL"
+        if c["name"] in pk:
+            line += " PRIMARY KEY"
+        if c.get("comment"):
+            line += f"  -- {c['comment']}"
+        lines.append(line)
+    for fk in t.get("fks") or []:
+        cols = ", ".join(fk["cols"])
+        ref_cols = ", ".join(fk["ref_cols"]) or "id"
+        lines.append(
+            f"  FOREIGN KEY ({cols}) REFERENCES {fk['ref_table']}({ref_cols})"
+        )
+
+    keyword = "VIEW" if is_view else "TABLE"
+    return f"{head}\nCREATE {keyword} {t['name']} (\n" + ",\n".join(lines) + "\n);"
+
+
+_TOKEN_RE = re.compile(r"[a-z0-9_]{2,}")
+_CJK_RE = re.compile(r"[一-鿿]")
+
+
+def _tokens(text: str) -> set:
+    """Latin/digit words plus CJK character bigrams.
+
+    Chinese has no spaces, so for Chinese table/column comments we compare
+    overlapping 2-character sequences — "数学" in the question then matches the
+    "数学" bigram in a column comment like "数学成绩".
+    """
+    low = (text or "").lower()
+    toks = set(_TOKEN_RE.findall(low))
+    cjk = _CJK_RE.findall(low)
+    toks.update(cjk[i] + cjk[i + 1] for i in range(len(cjk) - 1))
+    return toks
+
+
+def _table_tokens(t: Dict[str, Any]) -> set:
+    parts = [t.get("name", ""), t.get("comment", "")]
+    parts += [c["name"] + " " + c.get("comment", "") for c in t.get("columns", [])]
+    return _tokens(" ".join(parts))
+
+
+def _rank_tables(tables: List[Dict[str, Any]], query: str) -> List[float]:
+    """Relevance score per table for ``query``.
+
+    Shared tokens are weighted by inverse document frequency across the schema:
+    a bigram like "数学" that names one table beats a near-universal one like
+    "信息" that happens to appear in several comments.
+    """
+    q = _tokens(query)
+    if not q:
+        return [0.0] * len(tables)
+    token_sets = [_table_tokens(t) for t in tables]
+    doc_freq: Dict[str, int] = {}
+    for s in token_sets:
+        for tok in s:
+            doc_freq[tok] = doc_freq.get(tok, 0) + 1
+    n = len(tables)
+    scores = []
+    for s in token_sets:
+        scores.append(
+            sum(1.0 + math.log((n + 1) / (doc_freq[tok] + 1)) for tok in q & s)
+        )
+    return scores
+
+
+def build_schema_section(
+    tables: List[Dict[str, Any]], description: str = "",
+    max_chars: int = MAX_SCHEMA_CHARS, max_tables: int = MAX_SCHEMA_TABLES,
+) -> Tuple[str, int, int]:
+    """Render the schema for the prompt, trimming if it exceeds the budget.
+
+    Returns ``(section, shown, total)``. When every table fits, all are sent.
+    Otherwise tables are scored against ``description`` (Latin words + CJK
+    bigrams) and the most relevant are kept, with a note about how many were
+    omitted.
+    """
+    all_n = len(tables)
+    considered = tables[:max_tables]
+    beyond_cap = max(0, all_n - max_tables)
+    blocks = [render_table(t) for t in considered]
+
+    if sum(len(b) for b in blocks) <= max_chars:
+        chosen = list(range(len(blocks)))
+    else:
+        scores = _rank_tables(considered, description)
+        if any(s > 0 for s in scores):
+            order = sorted(range(len(blocks)), key=lambda i: (-scores[i], i))
+        else:
+            order = list(range(len(blocks)))
+        chosen = []
+        used = 0
+        for i in order:
+            extra = len(blocks[i]) + 2
+            if used + extra > max_chars and chosen:
+                continue
+            chosen.append(i)
+            used += extra
+        chosen.sort()
+
+    body = "\n\n".join(blocks[i] for i in chosen)
+    omitted = (len(considered) - len(chosen)) + beyond_cap
+    note = ""
+    if omitted > 0:
+        note = (
+            f"\n\n-- 注意：数据库中还有 {omitted} 张表/视图因篇幅未列出，"
+            "如确有需要请在问题中点名相关表。"
+        )
+    return body + note, len(chosen), all_n
+
+
+def fetch_schema_text(
+    ds: Dict[str, Any], description: str = "",
+    max_chars: int = MAX_SCHEMA_CHARS, max_tables: int = MAX_SCHEMA_TABLES,
+) -> Tuple[str, int, int]:
+    """Open the data source, introspect it, and return (section, shown, total).
+
+    Opens and disposes its own engine; callers run this on a worker thread.
+    """
+    engine = create_db_engine(ds)
+    try:
+        tables = introspect_schema(engine)
+        return build_schema_section(tables, description, max_chars, max_tables)
     finally:
         try:
             engine.dispose()

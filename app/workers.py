@@ -1,7 +1,7 @@
 """Background QThread workers so UI stays responsive."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QThread, Signal
 
@@ -10,6 +10,7 @@ from .db import (
     build_paginated_sql,
     build_count_sql,
     create_db_engine,
+    fetch_schema_text,
     is_select,
     run_non_select,
     run_scalar,
@@ -18,21 +19,57 @@ from .db import (
 )
 
 
+class SchemaFetchWorker(QThread):
+    """Introspects a data source in the background and returns its schema text."""
+    finished_ok = Signal(str, int, int)  # schema section, shown count, total count
+    failed = Signal(str)
+
+    def __init__(self, ds: Dict[str, Any]):
+        super().__init__()
+        self.ds = ds
+
+    def run(self):
+        try:
+            section, shown, total = fetch_schema_text(self.ds, "")
+            self.finished_ok.emit(section, shown, total)
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
 class AIGenerateWorker(QThread):
     """Runs AI SQL generation in the background."""
     finished_ok = Signal(str)  # sql text
     failed = Signal(str)
+    # Emitted when the worker had to introspect the schema itself (the UI's
+    # proactive load hadn't finished); lets the UI cache it for next time.
+    schema_ready = Signal(str, int, int)
 
-    def __init__(self, ai_cfg: Dict[str, Any], description: str, dialect: str):
+    def __init__(
+        self,
+        ai_cfg: Dict[str, Any],
+        description: str,
+        dialect: str,
+        schema: Optional[str] = None,
+        ds: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__()
         self.ai_cfg = ai_cfg
         self.description = description
         self.dialect = dialect
+        # None means "not yet known"; empty string means "intentionally none".
+        self.schema = schema
+        self.ds = ds
 
     def run(self):
         try:
+            schema_text = self.schema
+            if schema_text is None and self.ds is not None:
+                # Proactive cache miss (still loading, or earlier fetch failed):
+                # introspect here, ranked against the actual question this time.
+                schema_text, shown, total = fetch_schema_text(self.ds, self.description)
+                self.schema_ready.emit(schema_text, shown, total)
             provider = make_provider(self.ai_cfg)
-            sql = provider.generate_sql(self.description, self.dialect)
+            sql = provider.generate_sql(self.description, self.dialect, schema_text or "")
             self.finished_ok.emit(sql)
         except Exception as e:
             self.failed.emit(str(e))

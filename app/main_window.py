@@ -123,7 +123,9 @@ class MainWindow(QMainWindow):
 
     # ----- helpers -----
     def _on_data_sources_changed(self) -> None:
-        self.text2sql_page.refresh_data_sources()
+        # autoload_schema: a data-source connection was just added/edited, so if
+        # one is selected, read its structure straight away.
+        self.text2sql_page.refresh_data_sources(autoload_schema=True)
         self._refresh_status()
 
     def _refresh_status(self) -> None:

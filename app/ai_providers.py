@@ -9,8 +9,9 @@ Two request/response protocols are supported:
                       GitHub Models, and any 3rd-party gateway that claims
                       "OpenAI-compatible".
 
-    - `anthropic`  : POST {base}/messages with the Anthropic Messages API
-                      schema. Covers Anthropic Claude and any gateway that
+    - `anthropic`  : POST {base}/v1/messages with the Anthropic Messages API
+                      schema (or {base}/messages when base already ends in
+                      /v1). Covers Anthropic Claude and any gateway that
                       claims "Anthropic-compatible" (e.g. LiteLLM,
                       OpenRouter's Anthropic mode).
 
@@ -26,6 +27,8 @@ from typing import Any, Dict, Tuple
 import requests
 
 
+# Used when no data source is connected: the model has no schema to work from,
+# so it is explicitly allowed to invent placeholder table names.
 SYSTEM_PROMPT = (
     "你是一个专业的 SQL 生成助手。用户会用自然语言描述查询需求，"
     "你必须生成对应的 SQL 语句，不要输出任何多余说明。"
@@ -35,6 +38,30 @@ SYSTEM_PROMPT = (
     "3. 目标数据库方言为 {dialect}，请使用该方言语法；\n"
     "4. 默认不加末尾分号也允许，风格清晰即可。"
 )
+
+# Used when a data source is connected: the prompt carries the database's real
+# structure, so the model is told to stay inside it instead of inventing names.
+SYSTEM_PROMPT_SCHEMA = (
+    "你是一个专业的 SQL 生成助手。下面给出了目标数据库的真实表结构，"
+    "请严格依据它把用户的自然语言需求翻译成可执行 SQL。\n"
+    "规则：\n"
+    "1. 只能使用下面结构中真实存在的表名和列名，禁止臆造表或字段；\n"
+    "2. 需要多表关联时，依据结构中的外键（FOREIGN KEY ... REFERENCES）编写 JOIN 条件；\n"
+    "3. 把中文业务词对照列名、列注释和表注释映射到真实列。例如“三年级”应结合 grade "
+    "之类的年级列（注意其存的是数字 3 还是文本“三年级”），“数学”对应课程名称列，"
+    "“60 分以上”对应分数列并用数值比较；\n"
+    "4. 涉及歧义列名时用 表名.列名 限定；查询“学生信息”默认返回学生相关列而非 SELECT *；\n"
+    "5. 目标数据库方言为 {dialect}，请使用该方言语法；\n"
+    "6. 仅输出可执行的 SQL，不要输出 markdown 代码围栏之外的任何解释。\n\n"
+    "数据库真实表结构：\n{schema}"
+)
+
+
+def build_system_prompt(dialect: str, schema: str = "") -> str:
+    """Pick the schema-aware prompt when structure is available, else the generic one."""
+    if schema and schema.strip():
+        return SYSTEM_PROMPT_SCHEMA.format(dialect=dialect, schema=schema.strip())
+    return SYSTEM_PROMPT.format(dialect=dialect)
 
 
 def _extract_sql(text: str) -> str:
@@ -52,7 +79,7 @@ def _extract_sql(text: str) -> str:
 class BaseProvider:
     """Common shape for provider adapters."""
 
-    def generate_sql(self, description: str, dialect: str = "MySQL") -> str:
+    def generate_sql(self, description: str, dialect: str = "MySQL", schema: str = "") -> str:
         raise NotImplementedError
 
     def test_call(self) -> Tuple[bool, str]:
@@ -108,8 +135,9 @@ class OpenAIStyleProvider(BaseProvider):
         except Exception:
             raise RuntimeError(f"AI 响应格式不符合预期: {json.dumps(data, ensure_ascii=False)[:500]}")
 
-    def generate_sql(self, description: str, dialect: str = "MySQL") -> str:
-        return _extract_sql(self._chat(SYSTEM_PROMPT.format(dialect=dialect), description))
+    def generate_sql(self, description: str, dialect: str = "MySQL", schema: str = "") -> str:
+        system = build_system_prompt(dialect, schema)
+        return _extract_sql(self._chat(system, description))
 
     def test_call(self) -> Tuple[bool, str]:
         try:
@@ -122,7 +150,13 @@ class OpenAIStyleProvider(BaseProvider):
 # ---------- Anthropic-compatible ----------
 
 class AnthropicStyleProvider(BaseProvider):
-    """Anthropic Messages API (`POST {base}/messages`).
+    """Anthropic Messages API.
+
+    URL assembly follows the official Anthropic SDK convention: a bare base
+    (`https://api.anthropic.com`, or Volcengine's `.../api/coding`) gets
+    `/v1/messages` appended; a base that already ends with the API version
+    (`.../v1`) only gets `/messages`. A fully-qualified `.../messages` URL is
+    used as-is.
 
     Auth via `x-api-key`, plus `anthropic-version` header.
     System prompt is a top-level field, not a message.
@@ -153,7 +187,11 @@ class AnthropicStyleProvider(BaseProvider):
         base = self.api_base
         if base.endswith("/messages"):
             return base
-        return f"{base}/messages"
+        if base.endswith("/v1"):
+            return f"{base}/messages"
+        # Bare base (e.g. https://.../api/coding): the Anthropic SDK itself
+        # appends /v1/messages, so mirror that instead of hitting /messages.
+        return f"{base}/v1/messages"
 
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = {
@@ -191,8 +229,9 @@ class AnthropicStyleProvider(BaseProvider):
             pass
         raise RuntimeError(f"AI 响应格式不符合预期: {json.dumps(data, ensure_ascii=False)[:500]}")
 
-    def generate_sql(self, description: str, dialect: str = "MySQL") -> str:
-        return _extract_sql(self._chat(SYSTEM_PROMPT.format(dialect=dialect), description))
+    def generate_sql(self, description: str, dialect: str = "MySQL", schema: str = "") -> str:
+        system = build_system_prompt(dialect, schema)
+        return _extract_sql(self._chat(system, description))
 
     def test_call(self) -> Tuple[bool, str]:
         try:

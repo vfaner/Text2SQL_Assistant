@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
     QTextEdit, QVBoxLayout, QWidget,
 )
 
-from .config import DB_TYPES, ConfigManager
+from .config import DB_TYPES, ConfigManager, provider_preset
 from .db import precheck_sql
 from .error_dialog import show_error
 from .highlighter import SQLHighlighter
 from . import toast
-from .workers import AIGenerateWorker, SQLExecuteWorker
+from .workers import AIGenerateWorker, SchemaFetchWorker, SQLExecuteWorker
 
 
 DB_LABEL_BY_CODE = {code: label for label, code, _ in DB_TYPES}
@@ -31,6 +31,12 @@ class Text2SQLPage(QWidget):
         self.cfg = cfg
         self._ai_worker: Optional[AIGenerateWorker] = None
         self._sql_worker: Optional[SQLExecuteWorker] = None
+        # In-flight schema loads, kept as a list so a rapid datasource switch
+        # doesn't GC a QThread that's still running.
+        self._schema_workers: List[SchemaFetchWorker] = []
+        # ds name -> (schema section, shown count, total count); introspected
+        # once per data source and reused for every generation.
+        self._schema_cache: Dict[str, tuple] = {}
 
         # Pagination state
         self._current_page = 1
@@ -80,6 +86,21 @@ class Text2SQLPage(QWidget):
         toolbar.addWidget(self.btn_format)
 
         root.addLayout(toolbar)
+
+        # Schema status: shows whether the connected DB's real structure has
+        # been loaded for schema-aware generation.
+        schema_row = QHBoxLayout()
+        schema_row.setContentsMargins(0, 0, 0, 0)
+        self.schema_status = QLabel("表结构：未选择数据源")
+        self.schema_status.setStyleSheet("color:#7f8c8d;")
+        self.schema_status.setWordWrap(False)
+        schema_row.addWidget(self.schema_status, 1)
+        self.btn_reload_schema = QPushButton("重新读取表结构")
+        self.btn_reload_schema.setProperty("flat", True)
+        self.btn_reload_schema.setEnabled(False)
+        self.btn_reload_schema.clicked.connect(self._on_reload_schema)
+        schema_row.addWidget(self.btn_reload_schema)
+        root.addLayout(schema_row)
 
         # Splitter for three regions: NL input | SQL editor | Results
         splitter = QSplitter(Qt.Vertical)
@@ -169,7 +190,7 @@ class Text2SQLPage(QWidget):
         self._update_execute_enabled()
 
     # ----- Public: hooks from main window -----
-    def refresh_data_sources(self) -> None:
+    def refresh_data_sources(self, autoload_schema: bool = False) -> None:
         prev_current = self.cfg.get_current_data_source()
         self.ds_combo.blockSignals(True)
         self.ds_combo.clear()
@@ -188,6 +209,16 @@ class Text2SQLPage(QWidget):
         self.ds_combo.blockSignals(False)
         self._update_execute_enabled()
 
+        # Connection settings may have changed in the config dialog, so cached
+        # schemas can't be trusted. Startup (autoload_schema=False) deliberately
+        # does NOT open a connection; an explicit datasource change does.
+        self._schema_cache.clear()
+        current = self.ds_combo.currentData() or ""
+        if autoload_schema and current:
+            self._load_schema(current)
+        else:
+            self._set_schema_status("idle" if current else "none")
+
     def refresh_page_size(self) -> None:
         self._page_size = self.cfg.get_page_size()
         self.page_size_spin.blockSignals(True)
@@ -201,7 +232,9 @@ class Text2SQLPage(QWidget):
         self.ai_combo.clear()
         self.ai_combo.addItem("（未选择 AI）", "")
         for ai in self.cfg.get_ai_configs():
-            label = f"{ai.get('name','?')}  [{ai.get('provider','?')}]"
+            code = ai.get("provider", "")
+            vendor = provider_preset(code)[0] or code or "?"
+            label = f"{ai.get('name','?')}  [{vendor}]"
             self.ai_combo.addItem(label, ai["name"])
         idx = 0
         for i in range(self.ai_combo.count()):
@@ -248,8 +281,79 @@ class Text2SQLPage(QWidget):
         except Exception:
             pass
         self._update_execute_enabled()
+        self._load_schema(name)
         if name:
             self.status_message.emit(f"已切换到数据源: {name}")
+
+    def _set_schema_status(self, state: str, shown: int = 0, total: int = 0) -> None:
+        has_ds = self._current_ds() is not None
+        self.btn_reload_schema.setEnabled(has_ds and state != "loading")
+        if state == "none":
+            text = "表结构：未选择数据源，AI 将按通用经验猜测表名"
+            color = "#7f8c8d"
+        elif state == "idle":
+            text = "表结构：尚未读取，点「生成 SQL」时会自动读取（或点右侧按钮）"
+            color = "#7f8c8d"
+        elif state == "loading":
+            text = "表结构：正在读取数据库表结构…"
+            color = "#3498db"
+        elif state == "ok":
+            if shown < total:
+                text = f"表结构：已载入 {shown}/{total} 张表（表较多，已按问题相关性筛选），AI 基于真实结构生成"
+            else:
+                text = f"表结构：已载入 {total} 张表，AI 将基于真实表名 / 字段生成"
+            color = "#27ae60"
+        else:  # failed
+            text = "表结构：读取失败，本次 AI 将缺少真实结构（可点右侧重试）"
+            color = "#e67e22"
+        self.schema_status.setText(text)
+        self.schema_status.setStyleSheet(f"color:{color};")
+        self.schema_status.setToolTip("")
+
+    def _load_schema(self, name: str, force: bool = False) -> None:
+        """Proactively introspect the selected DB in the background."""
+        if not name:
+            self._set_schema_status("none")
+            return
+        if not force and name in self._schema_cache:
+            _, shown, total = self._schema_cache[name]
+            self._set_schema_status("ok", shown, total)
+            return
+        ds = self.cfg.find_data_source(name)
+        if not ds:
+            self._set_schema_status("none")
+            return
+
+        self._set_schema_status("loading")
+        worker = SchemaFetchWorker(ds)
+
+        def ok(section: str, shown: int, total: int) -> None:
+            # Ignore a response for a datasource the user already navigated away from.
+            if self.ds_combo.currentData() != name:
+                return
+            self._schema_cache[name] = (section, shown, total)
+            self._set_schema_status("ok", shown, total)
+
+        def fail(msg: str) -> None:
+            if self.ds_combo.currentData() != name:
+                return
+            self._set_schema_status("failed")
+            self.schema_status.setToolTip(msg[:500])
+
+        worker.finished_ok.connect(ok)
+        worker.failed.connect(fail)
+        self._schema_workers.append(worker)
+        worker.finished.connect(lambda w=worker: self._discard_worker(w))
+        worker.start()
+
+    def _discard_worker(self, worker: SchemaFetchWorker) -> None:
+        if worker in self._schema_workers:
+            self._schema_workers.remove(worker)
+
+    def _on_reload_schema(self) -> None:
+        name = self.ds_combo.currentData() or ""
+        if name:
+            self._load_schema(name, force=True)
 
     def _on_ai_change(self, _idx: int) -> None:
         name = self.ai_combo.currentData() or ""
@@ -294,11 +398,30 @@ class Text2SQLPage(QWidget):
         ds = self._current_ds()
         dialect = DB_LABEL_BY_CODE.get(ds.get("type", ""), "MySQL") if ds else "MySQL"
 
+        # Feed the AI the real schema when we've introspected it. If the
+        # proactive load hasn't finished (or failed earlier), pass the data
+        # source so the worker introspects inline and hands the result back to
+        # cache via schema_ready.
+        schema_text: Optional[str] = None
+        if ds is not None:
+            cached = self._schema_cache.get(ds["name"])
+            if cached is not None:
+                schema_text = cached[0]
+
         self.btn_generate.setEnabled(False)
         self.btn_generate.setText("生成中…")
         self.progress.setVisible(True)
 
-        self._ai_worker = AIGenerateWorker(ai_cfg, desc, dialect)
+        self._ai_worker = AIGenerateWorker(
+            ai_cfg, desc, dialect,
+            schema=schema_text,
+            ds=ds if schema_text is None else None,
+        )
+        if ds is not None:
+            def cache_schema(section: str, shown: int, total: int) -> None:
+                self._schema_cache[ds["name"]] = (section, shown, total)
+                self._set_schema_status("ok", shown, total)
+            self._ai_worker.schema_ready.connect(cache_schema)
 
         def ok(sql: str) -> None:
             self.btn_generate.setEnabled(True)
