@@ -2,10 +2,12 @@
 """
 Regenerate the platform icon files from the master artwork.
 
-    python scripts/make_icons.py
+    python scripts/make_icons.py                 # use assets/app_icon.png
+    python scripts/make_icons.py assets/icon.jpg  # regenerate from any image
 
-Reads `assets/app_icon.png` (a square RGBA image, ideally 1024x1024 with
-transparent corners) and writes:
+The source (any square, >= 512px format sips can read: PNG/JPG/...) is
+normalized to `assets/app_icon.png` at 1024x1024 — the master the app loads at
+runtime — then the script writes:
 
 * `assets/app_icon.icns` — macOS bundle icon, via `iconutil`
 * `assets/app_icon.ico`  — Windows executable icon
@@ -91,17 +93,32 @@ def build_ico(work: Path) -> None:
           f"  {len(images)} resolutions")
 
 
+def normalize_master(src: Path) -> None:
+    """Convert any sips-readable source to a 1024x1024 PNG master."""
+    subprocess.run(
+        ["sips", "-s", "format", "png", "-z", "1024", "1024",
+         str(src), "--out", str(MASTER)],
+        check=True, capture_output=True,
+    )
+
+
 def main() -> int:
     if sys.platform != "darwin":
         print("error: needs macOS (uses sips and iconutil)", file=sys.stderr)
         return 1
-    if not MASTER.exists():
-        print(f"error: missing master artwork {MASTER}", file=sys.stderr)
+    src = (ROOT / sys.argv[1]).resolve() if len(sys.argv) > 1 else MASTER
+    if not src.exists():
+        print(f"error: missing source artwork {src}", file=sys.stderr)
         return 1
     for tool in ("sips", "iconutil"):
         if shutil.which(tool) is None:
             print(f"error: {tool} not found on PATH", file=sys.stderr)
             return 1
+    if src.resolve() != MASTER.resolve():
+        shown = src.relative_to(ROOT) if src.is_relative_to(ROOT) else src
+        print(f"source: {shown}")
+        normalize_master(src)
+        print(f"  -> {MASTER.relative_to(ROOT)}  1024x1024 PNG")
 
     work = Path(tempfile.mkdtemp(prefix="text2sql-icons-"))
     try:
