@@ -30,16 +30,17 @@ DB_TYPES = [
 #   protocol: "openai" (OpenAI-compatible /chat/completions) or
 #             "anthropic" (Anthropic Messages API /messages)
 #
-# Note: a single physical vendor can appear more than once when it exposes
-# different base URLs per protocol (e.g. Volcengine ARK). The vendor list is
-# the source of truth for what the "Vendor" dropdown displays; switching
-# vendor auto-fills protocol + base URL + default model.
+# A vendor normally speaks one wire protocol and appears once below. Vendors
+# that expose BOTH protocols on different endpoints appear once here and carry
+# a per-protocol URL map in DUAL_PROTOCOL_PRESETS — the vendor dropdown shows a
+# single entry, and flipping the protocol dropdown rewrites the base URL.
 AI_PROVIDERS = [
     # ── OpenAI-compatible vendors ─────────────────────────────────────
     ("OpenAI", "openai", "openai", "https://api.openai.com/v1", "gpt-4o-mini"),
     ("阿里百炼（Qwen）", "bailian", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"),
     ("千问（Qwen）", "qwen", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-    ("火山引擎（Volcengine ARK · OpenAI 协议）", "volcengine", "openai", "https://ark.cn-beijing.volces.com/api/plan/v3", "ark-code-latest"),
+    ("火山引擎（Volcengine ARK · Coding Plan）", "volcengine", "openai",
+     "https://ark.cn-beijing.volces.com/api/coding/v3", "ark-code-latest"),
     ("豆包（Doubao）", "doubao", "openai", "https://ark.cn-beijing.volces.com/api/v3", "doubao-pro-32k"),
     ("DeepSeek", "deepseek", "openai", "https://api.deepseek.com/v1", "deepseek-chat"),
     ("百度千帆（ERNIE）", "qianfan", "openai", "https://qianfan.baidubce.com/v2", "ernie-4.0-turbo-8k"),
@@ -51,9 +52,48 @@ AI_PROVIDERS = [
 
     # ── Anthropic-compatible vendors ──────────────────────────────────
     ("Anthropic Claude", "anthropic", "anthropic", "https://api.anthropic.com/v1", "claude-3-5-sonnet-latest"),
-    ("火山引擎（Volcengine ARK · Anthropic 协议）", "volcengine_anthropic", "anthropic", "https://ark.cn-beijing.volces.com/api/plan", "ark-code-latest"),
     ("兼容 Anthropic 协议（自定义）", "anthropic_custom", "anthropic", "", ""),
 ]
+
+# Vendors reachable over BOTH protocols. code -> {protocol: (base_url, model)}.
+# Switching the protocol dropdown rewrites the URL for these vendors; vendors
+# not in this map leave a manually typed URL alone.
+#
+# Volcengine ARK Coding Plan: one subscription (model ark-code-latest) with an
+# OpenAI-compatible and an Anthropic-compatible entry point.
+#   - OpenAI:    base ends in /api/coding/v3, the adapter appends
+#                /chat/completions (OpenAI SDK convention).
+#   - Anthropic: base is the bare .../api/coding exactly as documented for
+#                Claude Code (ANTHROPIC_BASE_URL); the adapter appends
+#                /v1/messages, matching the official Anthropic SDK.
+DUAL_PROTOCOL_PRESETS: Dict[str, Dict[str, tuple]] = {
+    "volcengine": {
+        "openai": ("https://ark.cn-beijing.volces.com/api/coding/v3", "ark-code-latest"),
+        "anthropic": ("https://ark.cn-beijing.volces.com/api/coding", "ark-code-latest"),
+    },
+}
+
+# Vendor codes removed from the list above; old config.json files are migrated
+# to the new code, and this alias keeps them readable even before migration.
+_PROVIDER_ALIASES = {"volcengine_anthropic": "volcengine"}
+
+
+def provider_preset(code: str, protocol: str = "") -> tuple:
+    """Resolve a vendor code to ``(label, protocol, base_url, default_model)``.
+
+    Dual-protocol vendors return the URL/model for the requested protocol when
+    they support it. Unknown codes return empty strings.
+    """
+    code = _PROVIDER_ALIASES.get(code, code)
+    for label, c, proto, url, model in AI_PROVIDERS:
+        if c != code:
+            continue
+        alt = DUAL_PROTOCOL_PRESETS.get(code)
+        if alt and protocol in alt:
+            url, model = alt[protocol]
+            proto = protocol
+        return label, proto, url, model
+    return "", "openai", "", ""
 
 
 def _obfuscate(text: str) -> str:
@@ -76,6 +116,30 @@ def _deobfuscate(text: str) -> str:
             return ""
     # Backward compat: plaintext
     return text
+
+
+def _normalize_ai_entry(ai: Dict[str, Any]) -> None:
+    """In-place migration for renamed vendors and corrected endpoint URLs."""
+    # The Anthropic ARK entry used to be a separate vendor code; it is now one
+    # dual-protocol vendor, so fold it back and mark the protocol explicitly.
+    if ai.get("provider") == "volcengine_anthropic":
+        ai["provider"] = "volcengine"
+        ai["protocol"] = "anthropic"
+
+    # Coding Plan base-URL cleanup for volcengine entries:
+    #   * early builds shipped a typo (/api/plan instead of /api/coding);
+    #   * a later build pre-filled /api/coding/v1 for Anthropic, while the
+    #     documented base is the bare .../api/coding (the client appends
+    #     /v1/messages itself, like the Anthropic SDK);
+    #   * users may also paste the full .../v1/messages or .../v3/chat/
+    #     completions URL.
+    # Canonicalize any of these to the per-protocol preset.
+    if ai.get("provider") == "volcengine":
+        proto = ai.get("protocol") or "openai"
+        base = (ai.get("api_base") or "").strip().rstrip("/")
+        if ("/api/plan" in base) or ("/api/coding" in base):
+            endpoints = DUAL_PROTOCOL_PRESETS["volcengine"]
+            ai["api_base"] = endpoints.get(proto, endpoints["openai"])[0]
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -157,6 +221,7 @@ class ConfigManager:
             ds["password"] = _deobfuscate(ds.get("password", ""))
         for ai in merged.get("ai_configs", []):
             ai["api_key"] = _deobfuscate(ai.get("api_key", ""))
+            _normalize_ai_entry(ai)
 
         self.data = merged
 

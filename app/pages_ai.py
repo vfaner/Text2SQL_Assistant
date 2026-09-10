@@ -10,13 +10,19 @@ from PySide6.QtWidgets import (
     QSplitter, QVBoxLayout, QWidget,
 )
 
-from .config import AI_PROVIDERS, ConfigManager
+from .config import (
+    AI_PROVIDERS,
+    DUAL_PROTOCOL_PRESETS,
+    ConfigManager,
+    provider_preset,
+)
 from . import toast
 from .workers import AITestWorker
 
 
-PROVIDER_LABEL_BY_CODE = {code: label for label, code, _, _, _ in AI_PROVIDERS}
-PROVIDER_META_BY_CODE = {code: (protocol, url, model) for _label, code, protocol, url, model in AI_PROVIDERS}
+PROVIDER_LABEL_BY_CODE = {code: label for label, code, *_ in AI_PROVIDERS}
+# Retired vendor codes still found in old config.json files.
+PROVIDER_LABEL_BY_CODE["volcengine_anthropic"] = PROVIDER_LABEL_BY_CODE["volcengine"]
 
 
 class AIConfigPage(QWidget):
@@ -97,6 +103,9 @@ class AIConfigPage(QWidget):
         self.protocol_combo = QComboBox()
         self.protocol_combo.addItem("OpenAI 兼容协议 (/chat/completions)", "openai")
         self.protocol_combo.addItem("Anthropic 兼容协议 (/messages)", "anthropic")
+        # Dual-protocol vendors (e.g. Volcengine ARK) get their base URL
+        # rewritten when the protocol is flipped.
+        self.protocol_combo.currentIndexChanged.connect(self._on_protocol_change)
 
         self.api_base_edit = QLineEdit()
         self.api_base_edit.setMinimumWidth(560)
@@ -149,7 +158,8 @@ class AIConfigPage(QWidget):
             "支持两类协议：\n"
             "  • OpenAI 兼容 /chat/completions：OpenAI / DeepSeek / 阿里百炼 / 千问 / 火山 / 豆包 / 智谱 GLM / Kimi / 百度千帆 / 胜算云 / GitHub Models 等\n"
             "  • Anthropic 兼容 /messages：Anthropic Claude 及兼容网关\n"
-            "选择上方“厂商”会自动填充默认 API 地址、协议和模型；也可以选“自定义”手动填写。"
+            "选择“厂商”会自动填充默认协议、API 地址和模型；火山方舟等同时支持两种协议的厂商，"
+            "切换“协议”时会自动切换对应 API 地址。也可以选“自定义”手动填写。"
         )
         tip.setWordWrap(True)
         tip.setStyleSheet("color:#6c7a89; padding:8px 4px;")
@@ -181,13 +191,10 @@ class AIConfigPage(QWidget):
         self.name_edit.setText("")
         self.provider_combo.setCurrentIndex(0)
         # Pre-fill from newly chosen provider's defaults
-        code = self.provider_combo.currentData()
-        for _lbl, c, protocol, url, model in AI_PROVIDERS:
-            if c == code:
-                self._set_protocol(protocol)
-                self.api_base_edit.setText(url)
-                self.model_edit.setText(model)
-                break
+        _, protocol, url, model = provider_preset(self.provider_combo.currentData())
+        self._set_protocol(protocol)
+        self.api_base_edit.setText(url)
+        self.model_edit.setText(model)
         self.api_key_edit.setText("")
         self.temp_spin.setValue(0.2)
 
@@ -205,7 +212,7 @@ class AIConfigPage(QWidget):
 
         # Restore protocol from the saved config; fall back to the vendor's default,
         # and finally to "openai" for legacy configs that didn't record it.
-        protocol = cfg.get("protocol") or PROVIDER_META_BY_CODE.get(cfg.get("provider", ""), ("openai",))[0]
+        protocol = cfg.get("protocol") or provider_preset(cfg.get("provider", ""))[1] or "openai"
         self._set_protocol(protocol)
 
         self.api_base_edit.setText(cfg.get("api_base", ""))
@@ -251,17 +258,31 @@ class AIConfigPage(QWidget):
             self._fill_form(cfg)
 
     def _on_provider_change(self, _idx: int) -> None:
+        # Overwrite protocol / api_base / model whenever the vendor changes,
+        # matching the DB-type dropdown's pre-fill behavior. Custom vendors
+        # ship empty defaults and leave the fields untouched.
         code = self.provider_combo.currentData()
-        for _lbl, c, protocol, url, model in AI_PROVIDERS:
-            if c == code:
-                # Overwrite the protocol / api_base / model whenever the vendor
-                # changes - matches the behavior of the DB type dropdown pre-filling defaults.
-                self._set_protocol(protocol)
-                if url:
-                    self.api_base_edit.setText(url)
-                if model:
-                    self.model_edit.setText(model)
-                break
+        _label, protocol, url, model = provider_preset(code)
+        # _set_protocol blocks signals, so _on_protocol_change won't re-fire;
+        # fill the (possibly per-protocol) URL and model ourselves.
+        self._set_protocol(protocol)
+        if url:
+            self.api_base_edit.setText(url)
+        if model:
+            self.model_edit.setText(model)
+
+    def _on_protocol_change(self, _idx: int) -> None:
+        # Only rewrite the URL for vendors that publish a different endpoint
+        # per protocol. For single-protocol vendors the user may be pointing at
+        # a third-party gateway, so a custom URL is left alone.
+        code = self.provider_combo.currentData() or ""
+        protocol = self.protocol_combo.currentData() or "openai"
+        endpoints = DUAL_PROTOCOL_PRESETS.get(code)
+        if endpoints and protocol in endpoints:
+            url, model = endpoints[protocol]
+            self.api_base_edit.setText(url)
+            if model:
+                self.model_edit.setText(model)
 
     def _on_new(self) -> None:
         self.list_widget.setCurrentItem(None)
