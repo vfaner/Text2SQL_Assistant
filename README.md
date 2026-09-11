@@ -80,6 +80,8 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 
 ## 界面预览
 
+> 🎬 **视频演示**：[告别手写 SQL！配置即用的开源 Text2SQL 工具，无需指定表名，AI 自动读表注释生成可执行语句！](https://www.bilibili.com/video/BV1HvY369EVe/)（B 站）
+
 ### Text2SQL 核心页
 ![Text2SQL 主界面](assets/text2sql.png)
 

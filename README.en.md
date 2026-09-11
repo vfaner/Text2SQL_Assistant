@@ -81,6 +81,8 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 
 ## Screenshots
 
+> 🎬 **Video demo (Bilibili, Chinese narration)**: [No more hand-writing SQL — an open-source, configure-and-use Text2SQL tool that reads table comments automatically](https://www.bilibili.com/video/BV1HvY369EVe/)
+
 ### Text2SQL – main workspace
 ![Text2SQL main workspace](assets/text2sql.png)
 
