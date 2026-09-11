@@ -96,7 +96,7 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 
 - **Natural language → SQL**: describe your query in plain language, let the AI generate SQL in the target dialect, **let the app pre-check the output** (empty / prose / unbalanced quotes / missing SQL keyword), edit if needed, execute in one click.
 - **Grounded in your real schema**: when you pick a data source, the app automatically reads its tables, columns, primary/foreign keys and comments and sends them with your question — the model picks among the *actual* table/column names and writes JOINs from the real foreign keys, instead of guessing names like `student` or `score`. With many tables it ranks them against the question (CJK bigram matching for queries like "数学" / "三年级") and shows how many were included.
-- **Multi-database**: MySQL, PostgreSQL, Oracle, SQL Server, OpenGauss, DM (Dameng), KingbaseES, GBase, ShenTong — plus a "custom" option for any SQLAlchemy URL.
+- **Multi-database, drivers bundled**: MySQL, PostgreSQL, Oracle, SQL Server, OpenGauss, DM (Dameng), KingbaseES, and GBase 8a — plus a "custom" option for any SQLAlchemy URL. **Every built-in type ships its driver inside the packaged app and connects out of the box — no "missing driver" prompts**; only the generic "custom" type needs a driver you supply yourself (platform exceptions under [Known limitations](#known-limitations)).
 - **Multiple AI configs, switch on the fly**: manage several AI configs like data sources (new / edit / delete / test / mark current), switch the active one from a dropdown on the main page.
 - **Two protocols, many vendors**:
   - **OpenAI-compatible `/chat/completions`** — OpenAI, Aliyun Bailian, Qwen, Volcengine ARK, Doubao, DeepSeek, Baidu Qianfan (ERNIE), Zhipu GLM, Kimi (Moonshot), Shengsuanyun, GitHub Copilot / Models, custom.
@@ -142,6 +142,7 @@ Text2SQL_Assistant/
     ├── paths.py                   # Resource / config path resolution (source vs frozen)
     ├── config.py                  # config.json I/O, DB / AI catalogs
     ├── db.py                      # SQLAlchemy URL builders, pagination, execution, pre-check
+    ├── db_dialects.py             # Dameng / KingbaseES SQLAlchemy dialect shims (dm+dmpython / kingbase+ksycopg2)
     ├── ai_providers.py            # OpenAI + Anthropic dual-protocol adapter
     ├── workers.py                 # QThread workers (AI gen, DB test, SQL exec)
     ├── highlighter.py             # SQL syntax highlighter
@@ -167,7 +168,11 @@ Requires **Python 3.9+** (developed and tested on Python 3.14).
 pip install -r requirements.txt
 ```
 
-The Chinese "信创" database drivers (`dmPython`, KingbaseES-specific driver, GBase, ShenTong) are typically not on PyPI. Install them from each vendor's download page. The app will show a friendly error with the exact install hint on connection failure.
+`requirements.txt` already contains the driver for every built-in database type:
+
+- **Cross-platform pure-Python / self-contained wheels** (install cleanly on Windows, Linux and macOS): `PyMySQL` (MySQL, GBase 8a), `psycopg2-binary` (PostgreSQL, OpenGauss, and the PostgreSQL-protocol fallback for KingbaseES), `oracledb` (Oracle thin mode — **no Oracle Instant Client needed**), `pymssql` (FreeTDS is bundled in the wheel — **no ODBC Driver install needed**).
+- **Domestic (信创) native drivers**: `dmpython` (Dameng; the wheel bundles the Dameng client libraries) + `dmSQLAlchemy` (Dameng's official SQLAlchemy dialect), and `ksycopg2` (the official KingbaseES driver, bundles libkci) ship **Windows / Linux wheels only**. Platform markers in `requirements.txt` make `pip install` skip them on macOS automatically.
+- ShenTong (神通) publishes only JDBC / ODBC drivers — no redistributable Python driver exists — so it is not offered as a built-in type; connect via the "custom" data source instead.
 
 ---
 
@@ -253,15 +258,39 @@ Passwords and API keys are stored with a `b64:` prefix — this is obfuscation, 
 
 ---
 
-## Sample connection URLs
+## Built-in databases and drivers
+
+Every type in the dropdown builds its connection URL automatically and connects
+**with a bundled driver** — no driver packages to install yourself:
+
+| Database | Driver used | Windows / Linux build | macOS build |
+|---|---|---|---|
+| MySQL | PyMySQL (MySQL protocol, 3306) | ✅ bundled | ✅ bundled |
+| PostgreSQL | psycopg2 (5432) | ✅ bundled | ✅ bundled |
+| OpenGauss | psycopg2 (PG protocol, 5432) | ✅ bundled | ✅ bundled |
+| Oracle | oracledb thin mode (no Instant Client; service name or SID, 1521) | ✅ bundled | ✅ bundled |
+| SQL Server | pymssql (FreeTDS bundled — no ODBC needed, 1433) | ✅ bundled | ✅ bundled |
+| DM (Dameng, 5236) | dmpython + dmSQLAlchemy (both official; wheel bundles the client libraries) | ✅ bundled | ⚠️ vendor publishes no macOS driver — use the Windows / Linux build |
+| KingbaseES (54321) | ksycopg2 (official, bundles libkci), psycopg2 fallback | ✅ bundled | ✅ falls back to the PostgreSQL protocol via psycopg2, which most KingbaseES instances accept |
+| GBase 8a (5258) | PyMySQL (MySQL-compatible protocol) | ✅ bundled | ✅ bundled |
+| Custom | your own — put `{"url": "..."}` in the connection params | install the driver yourself | install the driver yourself |
+
+> **ShenTong (神通)** is not a built-in type: the vendor publishes only JDBC /
+> ODBC drivers and no redistributable Python driver (a JDBC bridge would also
+> require a JVM and the vendor jar on the user's machine, defeating the
+> "connects out of the box" goal). To reach ShenTong, choose the "custom"
+> data source type and supply your own driver and URL.
+
+### Sample connection URLs (for custom data sources)
 
 | Database                | SQLAlchemy URL example                                                       |
 |-------------------------|------------------------------------------------------------------------------|
 | MySQL                   | `mysql+pymysql://user:pwd@host:3306/db?charset=utf8mb4`                      |
-| PostgreSQL / OpenGauss / KingbaseES | `postgresql+psycopg2://user:pwd@host:5432/db`                     |
-| Oracle                  | `oracle+cx_oracle://user:pwd@host:1521/?service_name=ORCL`                   |
-| SQL Server              | `mssql+pyodbc://user:pwd@host:1433/db?driver=ODBC+Driver+17+for+SQL+Server`  |
-| Dameng                  | `dm+dmPython://user:pwd@host:5236/DAMENG`                                    |
+| PostgreSQL / OpenGauss  | `postgresql+psycopg2://user:pwd@host:5432/db`                                |
+| KingbaseES (PG fallback)| `postgresql+psycopg2://user:pwd@host:54321/db`                               |
+| Oracle                  | `oracle+oracledb://user:pwd@host:1521/?service_name=ORCL` (or SID: `…/XE`)   |
+| SQL Server              | `mssql+pymssql://user:pwd@host:1433/db`                                      |
+| Dameng                  | `dm+dmpython://user:pwd@host:5236/DAMENG`                                    |
 | Custom                  | Put `{"url": "your+dialect://..."}` in the data source's connection params.  |
 
 ---
@@ -310,8 +339,9 @@ Both scripts shell out to macOS's built-in `sips` / `iconutil` (prepare also use
 
 ## Known limitations
 
-- **The prebuilt binaries on Releases only bundle the MySQL and PostgreSQL drivers** (`PyMySQL` / `psycopg2`) — those two work out of the box. SQL Server, Oracle, Dameng and friends need a system-level library or a vendor download that can't be embedded in a single executable, so for those you'll need to run from source and install the driver yourself (see the comments in `requirements.txt`).
-- Driver availability for Chinese domestic databases (DM / GBase / ShenTong / KingbaseES) varies — the app only builds the URL and surfaces install hints; it does not download drivers for you.
+- **The official Dameng (`dmpython`) and KingbaseES (`ksycopg2`) drivers publish Windows / Linux wheels only — no macOS builds** (a vendor constraint, not a project one). The Windows / Linux packaged apps bundle the native drivers and connect out of the box; on macOS, KingbaseES connections automatically fall back to the PostgreSQL protocol (psycopg2, accepted by most KingbaseES instances), while Dameng requires the Windows / Linux packaged app (or running from source on Windows / Linux).
+- **ShenTong (神通) is not a built-in type**: the vendor publishes only JDBC / ODBC drivers and no redistributable Python driver. Use the "custom" data source with your own bridge driver and SQLAlchemy URL.
+- GBase connects over the MySQL protocol (GBase 8a, default port 5258); other GBase product lines (8s/8t) use different protocols — connect those via a "custom" data source.
 - Pagination wraps user SQL in a `SELECT * FROM (...) __t` subquery, which works for the vast majority of statements but may need manual pagination for very unusual SQL.
 - No safety guardrails — `DROP TABLE users;` will drop it. This is by design for dev/test workflows; add role-based access control at the database level for shared environments.
 - The macOS build is not notarized by Apple, so it needs a one-time manual approval on first launch (see above). Notarization requires a $99/year Apple Developer membership.

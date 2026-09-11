@@ -25,7 +25,7 @@ _HELP_HTML = """
 <ul>
   <li><b>基于真实表结构生成</b>：选中数据源后，工具自动读取库中的表 / 视图、字段、主外键和中文注释随问题一起发给 AI —— AI 在你<b>真实的</b>表名字段里做选择、按外键写 JOIN，而不是凭空猜名。表很多时按问题相关性自动筛选，并在工具栏下方提示“已载入 N 张表”。</li>
   <li><b>自然语言转 SQL</b>：用中文描述你想查什么（例如“查询三年级数学 60 分以上的学生信息”），AI 生成对应方言的 SQL，可手动编辑后再执行。</li>
-  <li><b>多数据库支持</b>：MySQL / PostgreSQL / Oracle / SQL Server / OpenGauss / 达梦 / 人大金仓 / 南大通用 / 神通，以及自定义 SQLAlchemy 地址。</li>
+  <li><b>多数据库支持</b>：MySQL / PostgreSQL / Oracle / SQL Server / OpenGauss / 达梦（DM）/ 人大金仓（KingbaseES）/ 南大通用（GBase 8a），以及自定义 SQLAlchemy 地址。<b>下拉中每种内置类型的驱动都随程序打包</b>，开箱即可直连，不会提示“缺少驱动”（只有自定义类型需要自行准备驱动）。</li>
   <li><b>多 AI 厂商 · 双协议</b>：OpenAI、阿里百炼 / 千问（Qwen）、火山引擎 ARK（Coding Plan）、豆包、DeepSeek、百度千帆、智谱 GLM、Kimi、胜算云、GitHub Models、Anthropic Claude，以及任意自定义兼容接口。火山方舟等厂商一个入口支持两种协议，在“协议”下拉里切换时<b>自动改写 API 地址</b>。</li>
   <li><b>结果分页与执行反馈</b>：SELECT 以表格形式展示并分页；INSERT/UPDATE/DELETE/DDL 返回执行状态；执行失败弹出独立错误框并附完整报错。</li>
   <li><b>配置持久化</b>：数据源和 AI 配置保存到 <code>config.json</code>，密码 / API Key 以 base64 编码存储；旧版本配置自动迁移。</li>
@@ -52,7 +52,7 @@ _HELP_HTML = """
   <li>读取表结构需要数据库账号有查看元数据的权限；库里表太多时只会把与问题最相关的表发给 AI，状态栏会显示“已载入 x / 总数 张”。</li>
   <li>API 地址的填写规则与官方 SDK 一致：OpenAI 协议地址要含版本段（如 <code>…/v1</code>、火山 Coding Plan 的 <code>…/api/coding/v3</code>）；Anthropic 协议地址填到根即可（如 <code>…/api/coding</code>），程序会自动补 <code>/v1/messages</code>。</li>
   <li>执行 <b>破坏性操作</b>（DROP / TRUNCATE / 大量 DELETE）前，请确认所选数据源。工具本身<b>不会</b>阻拦危险操作。</li>
-  <li>打包版内置 MySQL / PostgreSQL 驱动；Oracle / SQL Server / 达梦 / 金仓等请从源码运行并自行安装驱动，连接失败时会提示需要的包。</li>
+  <li><b>驱动内置说明</b>：Windows / Linux 打包版内置全部内置类型的驱动 —— Oracle 用纯 Python 瘦驱动（无需 Oracle 客户端）、SQL Server 自带 FreeTDS（无需安装 ODBC Driver 17）、达梦驱动自带达梦客户端库、GBase 8a 走 MySQL 协议。只有「其他（自定义）」需要自行准备驱动。两个平台例外：达梦 / 金仓官方只发布 Windows / Linux 驱动，macOS 打包版连金仓会自动改走 PostgreSQL 协议，连达梦请使用 Windows / Linux 打包版；神通（ShenTong）官方只提供 JDBC / ODBC 驱动、没有可分发的 Python 驱动，故未列入内置类型，需要时请用「其他（自定义）」自行接入。</li>
   <li>分页对复杂 SQL（含 ORDER BY / GROUP BY / WITH）以子查询方式包裹，绝大多数情况可用；多语句一次执行不支持。</li>
 </ul>
 

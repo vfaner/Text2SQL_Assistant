@@ -95,7 +95,7 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 
 - **Text2SQL**：自然语言输入 → AI 生成 SQL → **自动预检**（防止 AI 返回散文 / 括号不匹配等）→ 手动可编辑 → 一键执行；查询以表格 + 分页展示，非查询显示受影响行数。
 - **基于真实表结构生成**：选中数据源后，应用会自动读取库中表、列、主外键和中文注释并随问题一起发给 AI —— AI 在你**真实的**表名 / 字段里做选择并按外键写 JOIN，而不是凭空猜 `student`、`score` 之类的名字。表很多时按问题相关性筛选（中文按二元词组匹配，如“数学”“三年级”），并在界面提示已载入多少张表。
-- **多数据库支持**：MySQL、PostgreSQL、Oracle、SQL Server、OpenGauss、达梦（DM）、人大金仓（KingbaseES）、南大通用（GBase）、神通（ShenTong），以及自定义 SQLAlchemy URL。
+- **多数据库支持 · 驱动全部内置**：MySQL、PostgreSQL、Oracle、SQL Server、OpenGauss、达梦（DM）、人大金仓（KingbaseES）、南大通用（GBase 8a），以及自定义 SQLAlchemy URL。**下拉中每种内置类型的驱动都随打包程序内置，开箱直连，不会提示“缺少驱动包”**；只有「其他（自定义）」需要自行准备驱动（平台例外见[已知局限](#已知局限)）。
 - **多 AI 配置 · 一键切换**：像数据源一样可以配置多份 AI（新建 / 编辑 / 删除 / 测试调用 / 设为当前），主界面顶部下拉切换。
 - **双协议 · 多厂商**：
   - **OpenAI 兼容 `/chat/completions`**：OpenAI、阿里百炼、千问、火山引擎 ARK、豆包、DeepSeek、百度千帆（ERNIE）、智谱 GLM、Kimi（Moonshot）、胜算云、GitHub Copilot/Models，以及自定义。
@@ -139,6 +139,7 @@ Text2SQL_Assistant/
     ├── paths.py                   # 资源/配置路径解析（源码 vs 打包、可写用户目录）
     ├── config.py                  # config.json 读写 + DB/AI 列表 + base64 编码
     ├── db.py                      # SQLAlchemy URL 构造 + 各方言分页 + SQL 执行 + 预检
+    ├── db_dialects.py             # 达梦 / 人大金仓的 SQLAlchemy 方言适配（dm+dmpython / kingbase+ksycopg2）
     ├── ai_providers.py            # AI 适配层（OpenAI + Anthropic 双协议）
     ├── workers.py                 # 后台 QThread（AI 生成、DB 测试、SQL 执行）
     ├── highlighter.py             # SQL 语法高亮
@@ -165,7 +166,11 @@ Text2SQL_Assistant/
 pip install -r requirements.txt
 ```
 
-信创数据库驱动可能不能直接从 PyPI 安装（如 `dmPython`、部分金仓 / GBase / 神通驱动），需要从各官方渠道下载后手动安装。程序会在连接失败时给出提示。
+`requirements.txt` 已包含下拉中所有内置类型所需的驱动：
+
+- **跨平台纯 Python / 自包含 wheel**（Windows / Linux / macOS 均可直接装）：`PyMySQL`（MySQL、GBase 8a）、`psycopg2-binary`（PostgreSQL、OpenGauss，金仓的 PG 协议兜底）、`oracledb`（Oracle 纯 Python 瘦模式，**无需 Oracle Instant Client**）、`pymssql`（wheel 自带 FreeTDS，**无需安装 ODBC Driver**）。
+- **信创原生驱动**：`dmpython`（达梦，wheel 自带达梦客户端库）+ `dmSQLAlchemy`（达梦官方 SQLAlchemy 方言）、`ksycopg2`（人大金仓官方驱动，自带 libkci）只有 Windows / Linux wheel，已用平台标记限定，macOS 上执行 `pip install` 会自动跳过，不影响安装。
+- 神通（ShenTong）官方只提供 JDBC / ODBC 驱动，没有可随程序分发的 Python 驱动，因此不在内置类型中，请用「其他（自定义）」接入。
 
 ---
 
@@ -251,13 +256,32 @@ python main.py
 
 ---
 
-## 常见数据库连接字符串示例
+## 数据库与内置驱动
+
+下拉中的每种类型都由程序自动拼好连接串并**使用内置驱动**直连，无需自行安装任何驱动包：
+
+| 数据库类型 | 使用的驱动 | 连接方式 | Windows / Linux 打包版 | macOS 打包版 |
+|---|---|---|---|---|
+| MySQL | PyMySQL | MySQL 协议（3306） | ✅ 内置 | ✅ 内置 |
+| PostgreSQL | psycopg2 | PG 协议（5432） | ✅ 内置 | ✅ 内置 |
+| OpenGauss | psycopg2 | PG 协议（5432） | ✅ 内置 | ✅ 内置 |
+| Oracle | oracledb（瘦模式，无需 Instant Client） | `service_name` 或 SID（1521） | ✅ 内置 | ✅ 内置 |
+| SQL Server | pymssql（自带 FreeTDS，无需 ODBC） | TDS（1433） | ✅ 内置 | ✅ 内置 |
+| 达梦 DM | dmpython + dmSQLAlchemy（均为达梦官方，wheel 自带客户端库） | DM 协议（5236） | ✅ 内置 | ⚠️ 厂商无 macOS 驱动，请用 Windows / Linux 版连接 |
+| 人大金仓 KingbaseES | ksycopg2（官方，自带 libkci），psycopg2 兜底 | 54321 | ✅ 内置 | ✅ 自动走 PG 协议（psycopg2），多数 KingbaseES 实例可直连 |
+| 南大通用 GBase 8a | PyMySQL | 兼容 MySQL 协议（5258） | ✅ 内置 | ✅ 内置 |
+| 其他（自定义） | 自备 | 在“连接参数”中填 `{"url": "..."}` | 自行安装驱动 | 自行安装驱动 |
+
+> 神通（ShenTong）：官方仅发布 JDBC / ODBC 驱动，没有可随程序分发的 Python 驱动，无法做到开箱直连，因此未列入内置类型。需要连接神通时请选「其他（自定义）」，自行安装桥接驱动（如 JDBC 桥 + JVM）并提供 SQLAlchemy 连接串。
+
+### 常见连接字符串（自定义数据源参考）
 
 - MySQL：`mysql+pymysql://user:pwd@host:3306/db?charset=utf8mb4`
-- PostgreSQL / OpenGauss / 人大金仓：`postgresql+psycopg2://user:pwd@host:5432/db`
-- Oracle：`oracle+cx_oracle://user:pwd@host:1521/?service_name=ORCL`
-- SQL Server：`mssql+pyodbc://user:pwd@host:1433/db?driver=ODBC+Driver+17+for+SQL+Server`
-- 达梦：`dm+dmPython://user:pwd@host:5236/DAMENG`
+- PostgreSQL / OpenGauss：`postgresql+psycopg2://user:pwd@host:5432/db`
+- 人大金仓（PG 协议兜底写法）：`postgresql+psycopg2://user:pwd@host:54321/db`
+- Oracle：`oracle+oracledb://user:pwd@host:1521/?service_name=ORCL`（或用 SID：`…/XE`）
+- SQL Server：`mssql+pymssql://user:pwd@host:1433/db`
+- 达梦：`dm+dmpython://user:pwd@host:5236/DAMENG`
 - 自定义：在数据源的“连接参数”中填入 `{"url": "your+dialect://..."}`。
 
 ---
@@ -297,8 +321,9 @@ macOS 必须打成 `.app` 而不是裸可执行文件：Gatekeeper **不给**未
 
 ## 已知局限
 
-- **Releases 里的打包版只内置 MySQL 与 PostgreSQL 驱动**（`PyMySQL` / `psycopg2`），这两类开箱可连。SQL Server、Oracle、达梦等需要系统级库或厂商下载的驱动无法塞进单个可执行文件 —— 要连这些请改用「从源码运行」，按 `requirements.txt` 里的注释装对应驱动。
-- 达梦、GBase、神通、金仓的官方 Python 驱动分发情况差异较大；本工具仅提供 URL 拼装与提示，不能自动安装驱动。
+- **达梦 / 人大金仓的官方 Python 驱动只有 Windows / Linux wheel，没有 macOS 版**（厂商发布限制，非本项目可控）：Windows / Linux 打包版内置官方原生驱动，开箱直连；macOS 版连金仓会自动改用 PostgreSQL 协议（psycopg2，多数 KingbaseES 实例可连），连达梦请使用 Windows / Linux 打包版，或在 Windows / Linux 上从源码运行。
+- **神通（ShenTong）不在内置类型中**：官方只提供 JDBC / ODBC 驱动，没有可分发的 Python 驱动（JDBC 桥接还要求用户机器装有 JVM 和厂商 jar，与「开箱直连」目标冲突）。请用「其他（自定义）」数据源自行接入。
+- GBase 8a 通过 MySQL 协议接入（默认端口 5258）；其他 GBase 系列（如 GBase 8s/8t）协议不同，请用「其他（自定义）」。
 - 分页对复杂 SQL（含 `ORDER BY / GROUP BY / WITH`）以子查询方式包裹，绝大多数场景可用；极少数极端 SQL 可能需要用户手动加分页。
 - 安全性：为便于开发调试，允许所有 SQL 操作。生产环境务必单独做权限控制。
 - 多语句一次执行不支持（SQLAlchemy `text()` 底层驱动通常一次只发一条），需要一条一条执行。
