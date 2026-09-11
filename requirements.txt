@@ -14,27 +14,40 @@ requests>=2.31.0
 # SQL formatting
 sqlparse>=0.4.4
 
-# Database drivers (install per DB as needed on target machine)
-# MySQL
+# ── Database drivers ────────────────────────────────────────────────────────
+# Every database type offered in the data-source dropdown must connect
+# out-of-the-box, with no "driver missing" prompt; only the generic "custom"
+# type needs a user-supplied driver.
+#
+# Pure-Python / self-contained wheels, available on every platform (incl. macOS):
+#
+# MySQL / GBase 8a (GBase speaks the MySQL protocol)
 PyMySQL>=1.1.0
-# PostgreSQL / OpenGauss / KingbaseES (compatible)
+# PostgreSQL / OpenGauss (PG wire protocol); also the fallback driver for
+# KingbaseES when its native driver isn't available
 psycopg2-binary>=2.9.7
+# Oracle — thin mode is pure Python, no Oracle Instant Client needed
+oracledb>=2.0.0
+# SQL Server — wheels bundle FreeTDS, no unixODBC / msodbcsql system packages
+pymssql>=2.3.0
 #
-# The drivers below are NOT installed by default: each needs a system-level
-# library or vendor download that pip cannot provide, so requiring them here
-# would just break `pip install -r requirements.txt` on a clean machine.
-# Uncomment the one you need.
-#
-# SQL Server — also needs unixODBC plus a Microsoft ODBC driver:
-#   macOS: brew install unixodbc && brew install msodbcsql18
-#   Linux: apt-get install unixodbc msodbcsql18
-# pyodbc>=5.0.0
-# Oracle (requires Oracle Instant Client)
-# cx_Oracle>=8.3.0
-# Dameng
-# dmPython (须从达梦官网下载)
-# ShenTong / GBase (jaydebeapi as bridge, optional)
-# jaydebeapi>=1.2.3
+# Native 信创 drivers, Windows / Linux wheels only (the release CI builds on
+# Python 3.11, so these land inside the packaged Windows and Linux apps). The
+# wheels are self-contained:
+#   dmpython     — bundles the Dameng client libraries (dmPython module name),
+#                  CPython 3.10–3.14, win_amd64 + manylinux x86_64/aarch64
+#   dmSQLAlchemy — Dameng's official SQLAlchemy dialect (pure Python)
+#   ksycopg2     — KingbaseES psycopg2 fork, bundles libkci, CPython up to 3.13,
+#                  win_amd64 + manylinux x86_64/aarch64
+# None of them publishes a macOS wheel, so the markers skip macOS (e.g. this
+# dev machine) instead of breaking the install there.
+dmpython>=2.5.0; sys_platform != "darwin" and python_version >= "3.10"
+dmSQLAlchemy>=2.0.17; sys_platform != "darwin" and python_version >= "3.10"
+ksycopg2>=2.9.0; sys_platform != "darwin" and python_version >= "3.10" and python_version < "3.14"
+
+# 神通（ShenTong）: the vendor publishes only JDBC / ODBC drivers — no
+# redistributable Python driver exists, so it is not offered as a built-in
+# type. Use the "custom" data source with your own driver + SQLAlchemy URL.
 
 # Optional: only needed if you replace the base64 obfuscation in app/config.py
 # with real encryption. Nothing imports it as shipped.

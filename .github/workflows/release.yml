@@ -80,6 +80,22 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # Every built-in data-source type must have its driver importable here —
+      # this is what makes the packaged app connect with no "missing driver"
+      # prompts. dmPython / ksycopg2 ship Windows/Linux wheels only.
+      - name: Verify bundled drivers import
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib, sys
+          drivers = ["pymysql", "psycopg2", "oracledb", "pymssql"]
+          if sys.platform != "darwin":
+              drivers += ["dmPython", "ksycopg2"]
+          for name in drivers:
+              importlib.import_module(name)
+              print("OK imported", name)
+          PY
+
       # ── Build ────────────────────────────────────────────────────────
       - name: Build with PyInstaller (Windows / Linux)
         if: runner.os != 'macOS'

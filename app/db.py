@@ -11,28 +11,43 @@ from __future__ import annotations
 
 import math
 import re
+from importlib.util import find_spec
 from typing import Any, Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
+from .db_dialects import register_dialects
+
+# Register dm+dmpython / kingbase+ksycopg2 dialects before any URL is parsed.
+register_dialects()
+
 
 DriverHint = Dict[str, str]
 
-# Missing-driver hint messages for the user.
+# Every database type offered in the data-source dropdown ships a driver in the
+# packaged app, so these hints are normally never shown. They remain as guidance
+# for source-code runs on an unsupported platform (the domestic vendors publish
+# Windows/Linux wheels only).
 DRIVER_HINTS: Dict[str, DriverHint] = {
-    "mysql":       {"pkg": "pymysql",         "install": "pip install pymysql"},
-    "postgresql":  {"pkg": "psycopg2",        "install": "pip install psycopg2-binary"},
-    "oracle":      {"pkg": "cx_Oracle",       "install": "pip install cx_Oracle (需先安装 Oracle Instant Client)"},
-    "mssql":       {"pkg": "pyodbc",          "install": "pip install pyodbc (需系统安装 ODBC Driver for SQL Server)"},
-    "opengauss":   {"pkg": "psycopg2",        "install": "pip install psycopg2-binary (使用 PG 兼容驱动)"},
-    "dm":          {"pkg": "dmPython",        "install": "从达梦官网下载 dmPython 并安装（pip install dmPython 若可获取）"},
-    "kingbase":    {"pkg": "psycopg2",        "install": "pip install psycopg2-binary（人大金仓兼容 PG 协议）"},
-    "gbase":       {"pkg": "pyodbc / gbase 驱动", "install": "参考南大通用官方文档安装 Python 驱动"},
-    "shentong":    {"pkg": "jaydebeapi",      "install": "pip install jaydebeapi 并提供 JDBC 驱动 jar"},
-    "custom":      {"pkg": "-",               "install": "请在参数中提供 sqlalchemy url"},
+    "mysql":       {"pkg": "pymysql",    "install": "pip install pymysql"},
+    "postgresql":  {"pkg": "psycopg2",   "install": "pip install psycopg2-binary"},
+    "oracle":      {"pkg": "oracledb",   "install": "pip install oracledb（纯 Python 瘦模式，无需 Oracle 客户端）"},
+    "mssql":       {"pkg": "pymssql",    "install": "pip install pymssql（wheel 已内置 FreeTDS，无需安装 ODBC）"},
+    "opengauss":   {"pkg": "psycopg2",   "install": "pip install psycopg2-binary（OpenGauss 兼容 PG 协议）"},
+    "dm":          {"pkg": "dmPython",   "install": "Windows/Linux 打包版已内置达梦官方 dmpython（含达梦客户端库）；其他环境请在 Windows/Linux 上 pip install dmpython"},
+    "kingbase":    {"pkg": "ksycopg2",   "install": "pip install ksycopg2（人大金仓官方驱动，打包版已内置）或 pip install psycopg2-binary（PG 协议）"},
+    "gbase":       {"pkg": "pymysql",    "install": "pip install pymysql（GBase 8a 兼容 MySQL 协议，打包版已内置）"},
+    "custom":      {"pkg": "-",          "install": "请在参数中提供 SQLAlchemy 连接字符串 url，并自行安装对应驱动"},
 }
+
+
+def _has_module(name: str) -> bool:
+    try:
+        return find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def build_engine_url(ds: Dict[str, Any]) -> str:
@@ -48,9 +63,10 @@ def build_engine_url(ds: Dict[str, Any]) -> str:
     # Merge extra params into a query string
     def qs(extra: Dict[str, Any]) -> str:
         merged = {**params, **extra}
-        if not merged:
+        pairs = [(k, v) for k, v in merged.items() if v not in (None, "")]
+        if not pairs:
             return ""
-        return "?" + "&".join(f"{k}={v}" for k, v in merged.items() if v not in (None, ""))
+        return "?" + "&".join(f"{k}={v}" for k, v in pairs)
 
     if dtype == "mysql":
         return f"mysql+pymysql://{user}:{pwd}@{host}:{port or 3306}/{db}{qs({'charset': params.get('charset', 'utf8mb4')})}"
@@ -60,30 +76,42 @@ def build_engine_url(ds: Dict[str, Any]) -> str:
         # OpenGauss is PG protocol compatible; use psycopg2.
         return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port or 5432}/{db}{qs({})}"
     if dtype == "kingbase":
-        # KingbaseES is PG-compatible.
+        # Prefer Kingbase's own ksycopg2 (bundled in the packaged app); fall
+        # back to plain psycopg2 — KingbaseES also speaks the PostgreSQL wire
+        # protocol, so either driver connects.
+        if _has_module("ksycopg2"):
+            return f"kingbase+ksycopg2://{user}:{pwd}@{host}:{port or 54321}/{db}{qs({})}"
         return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port or 54321}/{db}{qs({})}"
     if dtype == "oracle":
-        # database may be SID or service name; caller decides.
+        # python-oracledb thin mode is pure Python: no Oracle Instant Client
+        # needed. database may be a SID or a service name; caller decides.
         service = params.get("service_name")
         if service:
-            return f"oracle+cx_oracle://{user}:{pwd}@{host}:{port or 1521}/?service_name={service}"
-        return f"oracle+cx_oracle://{user}:{pwd}@{host}:{port or 1521}/{db}"
+            return f"oracle+oracledb://{user}:{pwd}@{host}:{port or 1521}/?service_name={service}"
+        return f"oracle+oracledb://{user}:{pwd}@{host}:{port or 1521}/{db}"
     if dtype == "mssql":
-        driver = params.get("driver", "ODBC+Driver+17+for+SQL+Server")
-        return f"mssql+pyodbc://{user}:{pwd}@{host}:{port or 1433}/{db}?driver={driver}"
+        # pymssql wheels bundle FreeTDS: no unixODBC / msodbcsql system
+        # packages, no "ODBC Driver 17" install required.
+        extra = {"charset": params.get("charset")}
+        if params.get("tds_version"):
+            extra["tds_version"] = params["tds_version"]
+        return f"mssql+pymssql://{user}:{pwd}@{host}:{port or 1433}/{db}{qs(extra)}"
     if dtype == "dm":
-        # dmPython dialect registered by SQLAlchemy plugin from Dameng
-        return f"dm+dmPython://{user}:{pwd}@{host}:{port or 5236}/{db}"
+        # DmDialect is registered in app.db_dialects; the actual login goes
+        # through the explicit creator in create_db_engine().
+        return f"dm+dmpython://{user}:{pwd}@{host}:{port or 5236}/{db}"
     if dtype == "gbase":
-        # Best-effort; users may override via 'params.url'
+        # GBase 8a speaks the MySQL protocol, so PyMySQL connects directly.
+        # Users may still override via 'params.url'.
         if params.get("url"):
             return params["url"]
         return f"mysql+pymysql://{user}:{pwd}@{host}:{port or 5258}/{db}"
     if dtype == "shentong":
-        if params.get("url"):
-            return params["url"]
-        # jdbc via jaydebeapi requires manual dialect; leave user to supply url
-        return f"shentong://{user}:{pwd}@{host}:{port}/{db}"
+        raise ValueError(
+            "神通（ShenTong）官方仅提供 JDBC / ODBC 驱动，没有可随程序分发的 "
+            "Python 驱动，无法开箱直连。请改用「其他（自定义）」数据源，"
+            "自行安装驱动并在参数中填写 SQLAlchemy 连接字符串 url。"
+        )
     if dtype == "custom":
         if params.get("url"):
             return params["url"]
@@ -93,23 +121,52 @@ def build_engine_url(ds: Dict[str, Any]) -> str:
 
 
 def create_db_engine(ds: Dict[str, Any]) -> Engine:
+    dtype = (ds.get("type") or "").lower()
     url = build_engine_url(ds)
-    return create_engine(url, pool_pre_ping=True, future=True)
+    engine_kwargs: Dict[str, Any] = {"pool_pre_ping": True, "future": True}
+
+    if dtype == "dm" and not _has_module("dmSQLAlchemy"):
+        # Dameng's official dmSQLAlchemy dialect parses the URL itself when
+        # installed. With only the fallback shim, log in through an explicit
+        # creator (its create_connect_args is a no-op). dmPython is imported
+        # lazily so merely selecting a DM data source without the
+        # Windows/Linux-only wheel never raises at engine-construction time.
+        host = ds.get("host") or "localhost"
+        port = int(ds.get("port") or 5236)
+        username = ds.get("username") or ""
+        password = ds.get("password") or ""
+
+        def dm_creator() -> Any:
+            import dmPython  # type: ignore
+
+            return dmPython.connect(
+                user=username, password=password, server=host, port=port,
+            )
+
+        engine_kwargs["creator"] = dm_creator
+
+    return create_engine(url, **engine_kwargs)
 
 
 def test_connection(ds: Dict[str, Any]) -> Tuple[bool, str]:
     """Try connecting; returns (ok, message)."""
+    dtype = (ds.get("type") or "").lower()
     try:
         engine = create_db_engine(ds)
     except ModuleNotFoundError as e:
-        hint = DRIVER_HINTS.get((ds.get("type") or "").lower(), {})
+        hint = DRIVER_HINTS.get(dtype, {})
         return False, f"缺少驱动: {e}\n请安装: {hint.get('install', '')}"
+    except ValueError as e:
+        # Deliberate, already-user-facing guidance (e.g. ShenTong).
+        return False, str(e)
     except Exception as e:
         return False, f"URL 构造失败: {e}"
 
     try:
+        # Oracle (pre-23c) and DM require a FROM clause; DUAL exists on both.
+        ping = "SELECT 1 FROM DUAL" if dtype in ("oracle", "dm") else "SELECT 1"
         with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+            conn.execute(text(ping))
         return True, "连接成功！"
     except ModuleNotFoundError as e:
         hint = DRIVER_HINTS.get((ds.get("type") or "").lower(), {})

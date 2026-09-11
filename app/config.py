@@ -20,8 +20,7 @@ DB_TYPES = [
     ("OpenGauss", "opengauss", 5432),
     ("达梦（DM）", "dm", 5236),
     ("人大金仓（KingbaseES）", "kingbase", 54321),
-    ("南大通用（GBase）", "gbase", 5258),
-    ("神通（ShenTong）", "shentong", 2003),
+    ("南大通用（GBase 8a）", "gbase", 5258),
     ("其他（自定义）", "custom", 0),
 ]
 

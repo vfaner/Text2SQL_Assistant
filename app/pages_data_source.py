@@ -213,7 +213,7 @@ class DataSourcePage(QWidget):
         for _label, c, port in DB_TYPES:
             if c == code:
                 # Only change port if the current one is a known default of some other type
-                if self.port_spin.value() in [3306, 5432, 1521, 1433, 5236, 54321, 5258, 2003, 0]:
+                if self.port_spin.value() in [3306, 5432, 1521, 1433, 5236, 54321, 5258, 0]:
                     self.port_spin.setValue(port)
                 break
 

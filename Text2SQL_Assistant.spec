@@ -23,11 +23,16 @@ Run with:
 Output lands under `dist/`.
 """
 
+import glob
+import importlib.util
+import os
 import re
+import site
 import sys
+import sysconfig
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 IS_MACOS = sys.platform == "darwin"
 IS_WINDOWS = sys.platform == "win32"
@@ -39,22 +44,97 @@ VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', _init).group(1)
 
 # Bundle the whole assets directory; app/paths.py resolves it via sys._MEIPASS.
 datas = [("assets", "assets")]
+binaries = []
 
-# SQLAlchemy dialects import their driver modules lazily, so a few extra
-# hidden imports keep the builds honest.
-hiddenimports = (
-    collect_submodules("sqlalchemy.dialects")
-    + [
-        "pymysql",
-        "psycopg2",
-        # cx_Oracle / pyodbc / dmPython are optional; add here if you bundle them
-    ]
-)
+# SQLAlchemy dialects import their driver modules lazily, so the drivers are
+# listed explicitly. Every built-in data-source type must work offline in the
+# packaged app: pymysql (MySQL / GBase 8a), psycopg2 (PostgreSQL / OpenGauss,
+# KingbaseES fallback), oracledb (Oracle thin mode), pymssql (bundled
+# FreeTDS), plus the self-contained 信创 wheels ksycopg2 / dmpython and
+# Dameng's official dmSQLAlchemy dialect on Windows & Linux.
+hiddenimports = collect_submodules("sqlalchemy.dialects") + [
+    "pymysql",
+    "app.db_dialects",
+]
+
+
+def _module_present(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _take_all(pkg: str) -> None:
+    """collect_all() for a package if installed (datas + native libs + submodules)."""
+    if not _module_present(pkg):
+        return
+    d, b, h = collect_all(pkg)
+    datas.extend(d)
+    binaries.extend(b)
+    hiddenimports.extend(h)
+
+
+for _pkg in ("psycopg2", "oracledb", "pymssql", "ksycopg2", "dmssl", "dmSQLAlchemy"):
+    _take_all(_pkg)
+
+# dmSQLAlchemy reads package versions via importlib.metadata at import time;
+# make sure the dist-info is present inside the frozen app.
+for _dist in ("dmpython", "dmSQLAlchemy", "ksycopg2"):
+    if _module_present(_dist if _dist != "dmpython" else "dmPython"):
+        try:
+            datas += copy_metadata(_dist)
+        except Exception:
+            pass
+
+# dmPython is a top-level extension module (dmPython.pyd / dmPython.so), not a
+# package, so collect_all() doesn't apply. Its wheel also scatters the Dameng
+# client libraries outside the module: hashed dm*.dll next to site-packages on
+# Windows, an auditwheel-style dmpython.libs/ dir on Linux, plus the dmssl
+# package (handled above).
+if _module_present("dmPython"):
+    hiddenimports.append("dmPython")
+    _dm_origin = importlib.util.find_spec("dmPython").origin
+    if _dm_origin:
+        binaries.append((_dm_origin, "."))
+
+    _site_roots = {
+        os.path.abspath(p)
+        for p in (
+            site.getsitepackages()
+            + [site.getusersitepackages(),
+               sysconfig.get_paths().get("purelib", ""),
+               sysconfig.get_paths().get("platlib", "")]
+        )
+        if p and os.path.isdir(p)
+    }
+    if IS_WINDOWS:
+        for _root in _site_roots:
+            for _dll in glob.glob(os.path.join(_root, "dm*.dll")):
+                binaries.append((_dll, "."))
+    else:
+        for _root in _site_roots:
+            for _so in glob.glob(os.path.join(_root, "dmpython.libs", "*.so*")):
+                binaries.append((_so, "dmpython.libs"))
+
+# collect_all can see the same file more than once when packages share bundled
+# libs; Analysis rejects exact duplicate (dest, source) pairs.
+def _dedupe(pairs):
+    seen = set()
+    out = []
+    for src, dst in pairs:
+        key = (os.path.normcase(os.path.abspath(src)), dst)
+        if key not in seen:
+            seen.add(key)
+            out.append((src, dst))
+    return out
+
+binaries = _dedupe(binaries)
 
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
