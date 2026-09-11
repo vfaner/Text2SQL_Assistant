@@ -123,6 +123,50 @@ jobs:
           cd dist
           7z a "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
 
+      # Pure-Python modules live inside the PYZ blob; this asserts the native
+      # driver layer (extension modules + vendor client libraries) really made
+      # it into the single-file executable for every built-in data-source type.
+      - name: Verify native drivers are packaged
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          from PyInstaller.archive.readers import CArchiveReader
+
+          exe = Path("dist") / ("Text2SQL_Assistant.exe" if sys.platform == "win32"
+                                else "Text2SQL_Assistant")
+          names = [str(n).replace("\\", "/")
+                   for n in CArchiveReader(str(exe)).toc.keys()]
+
+          required = [
+              "psycopg2/_psycopg",        # PostgreSQL / OpenGauss / KingbaseES fallback
+              "oracledb/thin_impl",       # Oracle thin mode
+              "pymssql/_mssql",           # SQL Server (FreeTDS statically linked)
+              "dmPython",                 # 达梦 DM extension
+              "ksycopg2/_ksycopg",        # 人大金仓 KingbaseES extension
+          ]
+          if sys.platform == "win32":
+              required += [
+                  "dmdpi",                 # DM client library set (dmdpi/dmcomm/…)
+                  "ksycopg2/libkci.dll",   # Kingbase client
+                  "dmssl/ssleay32.dll",    # DM SSL package
+              ]
+          else:
+              required += [
+                  "dmpython.libs/libdmdpi",
+                  "ksycopg2/libkci.so",
+                  "dmssl/libssl.so",
+              ]
+
+          missing = [n for n in required if not any(n in e for e in names)]
+          if missing:
+              print("MISSING from executable:", missing)
+              sys.exit(1)
+          print("OK: all native drivers packaged inside", exe)
+          PY
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
