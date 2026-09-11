@@ -34,7 +34,7 @@ The executable is **not code-signed** (an EV code-signing certificate costs seve
 
 > Alternatively, before unzipping: right-click the zip → Properties → tick **Unblock** at the bottom. The extracted exe then carries no tag and won't be blocked at all.
 >
-> First launch unpacks roughly 46 MB into a temp directory, so expect a few seconds with no window. That's normal.
+> First launch unpacks roughly 60–120 MB (all database drivers are bundled) into a temp directory, so expect a few seconds with no window. That's normal.
 
 ### 🍎 First launch on macOS needs a one-time approval
 

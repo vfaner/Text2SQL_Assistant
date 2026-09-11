@@ -163,6 +163,13 @@ jobs:
 
             自然语言 → SQL → 一键执行。三个平台的独立可执行文件，无需安装 Python。
 
+            ### 本版更新（v1.3.0）
+
+            - **数据库驱动全部内置**：下拉中的每种数据库类型开箱直连，不再提示“缺少驱动包”，只有「其他（自定义）」需要自行准备驱动。
+            - Oracle 改用纯 Python 瘦驱动（无需安装 Oracle Instant Client）；SQL Server 改用自带 FreeTDS 的 pymssql（无需安装 ODBC Driver）。
+            - 新内置信创数据库驱动：**达梦 DM**（官方 dmpython + dmSQLAlchemy，含客户端库）、**人大金仓 KingbaseES**（官方 ksycopg2，缺省时自动走 PG 协议）；GBase 8a 经 MySQL 协议直连。
+            - 平台说明：达梦 / 金仓官方仅提供 Windows / Linux 驱动，macOS 版连金仓自动走 PostgreSQL 协议，连达梦请使用 Windows / Linux 版；神通（ShenTong）官方仅有 JDBC/ODBC 驱动，请用「自定义」接入。
+
             ### 下载
 
             | 平台        | 文件                                                      |
@@ -201,7 +208,7 @@ jobs:
 
             > 也可以在解压前右键 zip → 属性 → 勾选「**解除锁定**」，就不会被拦。
             >
-            > 首次启动要解包约 46 MB 到临时目录，有几秒没窗口是正常的。
+            > 首次启动要把约 60–120 MB 内容解包到临时目录，有几秒没窗口是正常的（内置了全部数据库驱动）。
 
             ### Linux 运行
 
