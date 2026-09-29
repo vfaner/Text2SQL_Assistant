@@ -114,14 +114,14 @@ jobs:
         if: matrix.archive_cmd == 'tar_gz'
         run: |
           cd dist
-          tar -czvf "${{ matrix.asset_name }}.tar.gz" muask${{ matrix.binary_ext }}"
+          tar -czvf "${{ matrix.asset_name }}.tar.gz" muask${{ matrix.binary_ext }}
 
       - name: Package (Windows, zip)
         if: matrix.archive_cmd == 'zip'
         shell: bash
         run: |
           cd dist
-          7z a "${{ matrix.asset_name }}.zip" muask${{ matrix.binary_ext }}"
+          7z a "${{ matrix.asset_name }}.zip" muask${{ matrix.binary_ext }}
 
       # Pure-Python modules live inside the PYZ blob; this asserts the native
       # driver layer (extension modules + vendor client libraries) really made
