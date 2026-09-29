@@ -5,13 +5,16 @@ import os
 import webbrowser
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, QPoint, QSize, Qt, Signal
+from PySide6.QtCore import QByteArray, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QWidget
 
+from . import __version__
 from .donate_dialog import DonateDialog
 from .paths import resource_path
+from .update_dialog import UpdateAvailableDialog
+from .updater import UpdateCheckWorker
 
 
 GITHUB_REPO_URL = "https://github.com/vfaner/muask"
@@ -146,6 +149,106 @@ class TitleBar(QWidget):
         self.setAttribute(Qt.WA_StyledBackground, True)
 
         self._build_ui(title)
+        self._start_update_check()
+
+    # ----- update check -----
+    def _start_update_check(self) -> None:
+        """Fire the version probe in the background; UI updates when it lands."""
+        self._updater = UpdateCheckWorker(self)
+        self._updater.update_available.connect(self._on_update_available)
+        self._updater.up_to_date.connect(self._on_up_to_date)
+        self._updater.check_failed.connect(self._on_check_failed)
+        # Defer a tick so the window can finish painting first.
+        QTimer.singleShot(600, self._updater.start)
+
+    def _on_update_available(self, latest: str, url: str, notes: str) -> None:
+        self._update_url = url
+        self._update_latest = latest
+        self._update_notes = notes
+        self.update_dot.show()
+        self._reposition_update_dot()
+        self._set_pill_style("orange", "有新版本")
+        self.version_pill.setToolTip(f"发现新版本 v{latest}，点击查看更新说明并下载")
+        # 弹一次提示，让用户立刻看到（但不要抢焦点）
+        QTimer.singleShot(300, self._maybe_show_update_dialog)
+
+    def _on_up_to_date(self, latest: str) -> None:
+        self._set_pill_style("green", "已是最新")
+        self.version_pill.setToolTip(f"已是最新版本 v{latest}，点击打开项目主页")
+
+    def _on_check_failed(self, _reason: str) -> None:
+        self._set_pill_style("gray", f"v{__version__}")
+        self.version_pill.setToolTip(
+            "检查更新失败（GitHub / Gitee 都无法访问），点击打开项目主页"
+        )
+
+    def _maybe_show_update_dialog(self) -> None:
+        if self._update_latest:
+            dlg = UpdateAvailableDialog(
+                self._update_latest, self._update_notes,
+                self._update_url or GITHUB_REPO_URL,
+                self._parent_window,
+            )
+            dlg.exec()
+            # 用户看完后红点可以消掉，避免一直挂着
+            self.update_dot.hide()
+
+    def _on_pill_clicked(self) -> None:
+        if self._update_latest:
+            self._maybe_show_update_dialog()
+        else:
+            # 已是最新 / 检查失败 → 打开项目主页
+            try:
+                webbrowser.open(GITHUB_REPO_URL, new=2)
+            except Exception:
+                pass
+
+    def _set_pill_style(self, color: str, text: str) -> None:
+        """
+        color:
+          gray   — 请求中 / 网络失败
+          green  — 已是最新
+          orange — 有新版本
+
+        胶囊样式：透明底、彩色边框 + 同色文字 + 同色 tag 图标（边框、文字、图标同色，中间空）。
+        """
+        palettes = {
+            "gray":   "rgba(255,255,255,0.85)",
+            "green":  "#2ea860",
+            "orange": "#e8891a",
+        }
+        fg = palettes[color]
+        self._pill_color = color
+        self.version_pill.setIcon(_render_svg_icon(os.path.join(ASSETS_DIR, "tag.svg"), size=13, color=fg))
+        self.version_pill.setIconSize(QSize(13, 13))
+        self.version_pill.setText(f"  {text}")
+        self.version_pill.setStyleSheet(f"""
+            QToolButton {{
+                background: transparent;
+                color: {fg};
+                border: 1.5px solid {fg};
+                border-radius: 10px;
+                padding: 3px 8px 3px 6px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QToolButton:hover {{
+                background: rgba(255,255,255,0.12);
+            }}
+        """)
+
+    def _reposition_update_dot(self) -> None:
+        if not self.update_dot.isVisible():
+            return
+        margin = -2
+        self.update_dot.move(
+            self.version_pill.width() - self.update_dot.width() + margin,
+            margin,
+        )
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        self._reposition_update_dot()
 
     def _build_ui(self, title: str) -> None:
         row = QHBoxLayout(self)
@@ -157,20 +260,38 @@ class TitleBar(QWidget):
         self.title_label.setStyleSheet("color:#ffffff; font-weight:600; font-size:13px;")
         row.addWidget(self.title_label)
 
+        # Version suffix in the title bar, e.g. "沐问 MuAsk · …  v1.4.0"
+        self.version_label = QLabel(f"  v{__version__}")
+        self.version_label.setStyleSheet(
+            "color:rgba(255,255,255,0.75); font-size:12px; font-weight:400;"
+        )
+        row.addWidget(self.version_label)
+
         row.addStretch(1)
 
-        # --- GitHub button (icon + "项目地址" text, both clickable) ---
-        self.btn_github = QToolButton()
-        self.btn_github.setIcon(_make_github_icon(18))
-        self.btn_github.setIconSize(QSize(18, 18))
-        # Leading spaces reliably create a visual gap between icon and text on Qt
-        self.btn_github.setText("  项目地址")
-        self.btn_github.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.btn_github.setToolTip("获取最新版本 (GitHub)")
-        self.btn_github.setCursor(Qt.PointingHandCursor)
-        self.btn_github.setObjectName("titleIconBtn")
-        self.btn_github.clicked.connect(self._on_github)
-        row.addWidget(self.btn_github)
+        # --- 版本状态胶囊（替代原"项目地址"按钮）---
+        # 状态：请求中(灰) / 已是最新(绿) / 有新版本(橙+红点) / 失败(灰)
+        self.version_pill = QToolButton()
+        self.version_pill.setCursor(Qt.PointingHandCursor)
+        self.version_pill.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.version_pill.setToolTip("正在检查更新…")
+        self._pill_color = "gray"
+        self._set_pill_style("gray", f"v{__version__}")
+        self.version_pill.clicked.connect(self._on_pill_clicked)
+        row.addWidget(self.version_pill)
+
+        # 红点：作为胶囊的子控件，贴在右上角
+        self.update_dot = QLabel(self.version_pill)
+        self.update_dot.setFixedSize(10, 10)
+        self.update_dot.setStyleSheet(
+            "background:#ff4d4f; border:2px solid #ffffff; border-radius:5px;"
+        )
+        self.update_dot.hide()
+
+        # 状态数据
+        self._update_url: Optional[str] = None
+        self._update_latest: Optional[str] = None
+        self._update_notes: str = ""
 
         # --- Donate button (icon + "捐赠" text, both clickable) ---
         self.btn_donate = QToolButton()
@@ -212,12 +333,6 @@ class TitleBar(QWidget):
         row.addWidget(self.btn_close)
 
     # ----- actions -----
-    def _on_github(self) -> None:
-        try:
-            webbrowser.open(GITHUB_REPO_URL, new=2)
-        except Exception:
-            pass
-
     def _on_donate(self) -> None:
         dlg = DonateDialog(self._parent_window)
         dlg.exec()

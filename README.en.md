@@ -4,16 +4,20 @@ English | [简体中文](./README.md)
 
 A desktop application built with **PySide6** that turns **natural-language questions into SQL**, executes it on your configured database, and shows the result. Supports mainstream RDBMSes and Chinese "信创" (domestic) databases, and works with multiple LLM vendors out of the box.
 
-> Formerly Text2SQL Assistant. Renamed to **MuAsk** in v1.4.0 — "mu" comes from the author's domain qqmu.com, "ask" for natural-language querying. It joins the same-author product family [jync](https://github.com/vfaner/jync) (data sync) and [jargus](https://github.com/vfaner/jargus) (Java code review).
+### Project links
 
-- Repo: https://github.com/vfaner/muask
-- If this project is useful to you, please consider giving it a **Star ⭐**.
+| Platform | URL |
+|----------|-----|
+| GitHub | https://github.com/vfaner/muask |
+| Gitee (China mirror) | https://gitee.com/super_rgh/muask |
+
+If this project is useful to you, please consider giving it a **Star ⭐**.
 
 ---
 
 ## 📦 Grab a pre-built binary (no Python required)
 
-Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/muask/releases)** and grab the build for your platform. No Python, no dependencies, no `pip install`. None of the three builds are code-signed, so Windows and macOS both need a one-time manual approval on first launch (once each, never again afterwards) — steps below.
+Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/muask/releases)** and grab the build for your platform. No Python, no dependencies, no `pip install`. Windows and macOS both need a one-time manual approval on first launch (once each, never again afterwards) — steps below.
 
 | Platform | Download | How to run |
 |----------|----------|------------|
@@ -27,7 +31,7 @@ Don't feel like setting up a Python environment? Head over to the **[Releases pa
 
 ### 🪟 First launch on Windows needs a one-time approval
 
-The executable is **not code-signed** (an EV code-signing certificate costs several hundred dollars a year). A zip downloaded through a browser is tagged with the Mark-of-the-Web, the extracted exe inherits that tag, and Microsoft Defender SmartScreen blocks it once:
+Microsoft Defender SmartScreen blocks it the first time:
 
 1. Double-click the exe → **"Windows protected your PC"** appears
 2. That dialog only shows a "Don't run" button by default — click **More info** in the lower left
@@ -40,7 +44,7 @@ The executable is **not code-signed** (an EV code-signing certificate costs seve
 
 ### 🍎 First launch on macOS needs a one-time approval
 
-The app is **not notarized by Apple** (notarization requires a $99/year Apple Developer membership), so macOS blocks it the first time. To approve it:
+macOS blocks it the first time. To approve it:
 
 1. Open the DMG and drag `muask.app` into Applications
 2. Double-click the app → you'll get *"Apple could not verify…"* → click **Done** (**not** "Move to Trash")
@@ -91,8 +95,17 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 ### Data source configuration
 ![Data source configuration](assets/db_config.png)
 
+### Add a data source
+![Add a data source](assets/db_config_add.png)
+
 ### AI configuration
 ![AI configuration](assets/ai_config.png)
+
+### Help page
+![Help page](assets/soft_method.png)
+
+### About us
+![About us](assets/about_me.png)
 
 ---
 
@@ -108,7 +121,7 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 - **Clean error UX**: SQL execution errors surface in a dedicated dialog with a **Close button** and scrollable detail; stale results are cleared automatically; a one-line error summary is shown in the result panel.
 - **SELECT / DML / DDL**: SELECTs render as a paginated table; INSERT/UPDATE/DELETE/DDL report the affected row count and command status.
 - **Persistent config**: data sources and AI settings are stored in `config.json`; passwords and API keys are base64-encoded (obfuscation, not real encryption); older configs auto-migrate.
-- **Modern UI**: custom frameless title bar with GitHub / Donate buttons, Vue element-plus style toast notifications, rounded cards, soft palette, window auto-centers on the current screen.
+- **Modern UI**: custom frameless title bar with a version-status pill (auto-checks GitHub / Gitee for updates) and a Donate button, Vue element-plus style toast notifications, rounded cards, soft palette, window auto-centers on the current screen.
 - **Cross-platform**: runs on Windows 10/11, macOS 12+, and Ubuntu 20.04+.
 
 ---
@@ -134,13 +147,17 @@ muask/
 │   ├── app_icon.icns              # macOS bundle icon (generated)
 │   ├── app_icon.ico               # Windows executable icon (generated)
 │   ├── github.svg
+│   ├── tag.svg
 │   ├── donate.png
 │   ├── alipay.png
 │   ├── wechat.png
 │   ├── qq.png
 │   ├── text2sql.png
 │   ├── db_config.png
-│   └── ai_config.png
+│   ├── db_config_add.png
+│   ├── ai_config.png
+│   ├── soft_method.png
+│   └── about_me.png
 └── app/
     ├── __init__.py
     ├── paths.py                   # Resource / config path resolution (source vs frozen)
@@ -153,12 +170,15 @@ muask/
     ├── styles.py                  # QSS
     ├── toast.py                   # Vue-style toast notifications
     ├── error_dialog.py            # Scrollable error dialog with Close button
-    ├── title_bar.py               # Custom title bar (GitHub / Donate / window controls)
+    ├── title_bar.py               # Custom title bar (version check / Donate / window controls)
+    ├── update_dialog.py           # Update-available dialog
+    ├── updater.py                 # GitHub / Gitee version checker
     ├── donate_dialog.py           # QR-code donation dialog
     ├── pages_text2sql.py          # Text2SQL page
     ├── pages_data_source.py       # Data source page
     ├── pages_ai.py                # AI config page (multi-entry management)
     ├── pages_about.py             # Help / About page
+    ├── pages_about_us.py          # About us page
     └── main_window.py             # Main window
 ```
 
@@ -252,7 +272,7 @@ Where `config.json` lives depends on how you run the app:
 | How you run it | `config.json` location |
 |----------------|------------------------|
 | From source | Project root (see `config.example.json` for a template) |
-| macOS build | `~/Library/Application Suppor./muask/` |
+| macOS build | `~/Library/Application Support/muask/` |
 | Windows build | `%APPDATA%\muask\` |
 | Linux build | `$XDG_CONFIG_HOME/muask/` (defaults to `~/.config/…`) |
 
@@ -320,7 +340,7 @@ Packaging is driven by `muask.spec`, which produces a different artifact per pla
 ```bash
 pip install pyinstaller
 pyinstaller --clean --noconfirm muask.spec
-# → dis./muask[.exe]
+# → dist/muask[.exe]
 ```
 
 **macOS** — `.app` bundle wrapped in a DMG; the script also ad-hoc signs it:
@@ -334,7 +354,7 @@ pip install pyinstaller
 
 Shipping a `.app` on macOS isn't cosmetic: Gatekeeper offers **no** approval path for an unsigned bare Unix executable — its warning dialog only has "Move to Trash", so users simply cannot run it.
 
-If you have an Apple Developer membership ($99/year), follow the two `TODO(notarize)` comments in `scripts/build_macos.sh` to sign with a real Developer ID and add the `notarytool` / `stapler` steps. Users then get **no prompt at all**.
+If you have an Apple Developer membership, follow the two `TODO(notarize)` comments in `scripts/build_macos.sh` to sign with a real Developer ID and add the `notarytool` / `stapler` steps. Users then get **no prompt at all**.
 
 **Changing the icon**:
 - Source is already a **square icon on a transparent background**: run `python3 scripts/make_icons.py your.png` — it normalizes the image to the 1024x1024 master `assets/app_icon.png` (also the Qt window icon) and regenerates the `.icns` / `.ico`.
@@ -352,7 +372,7 @@ Both scripts shell out to macOS's built-in `sips` / `iconutil` (prepare also use
 - MariaDB's official Python connector (`mariadb`) ships Windows wheels only, so Linux/macOS cannot bundle it — but MariaDB speaks the MySQL protocol, and this tool connects through `PyMySQL`, which is bundled on all platforms.
 - Pagination wraps user SQL in a `SELECT * FROM (...) __t` subquery, which works for the vast majority of statements but may need manual pagination for very unusual SQL.
 - No safety guardrails — `DROP TABLE users;` will drop it. This is by design for dev/test workflows; add role-based access control at the database level for shared environments.
-- The macOS build is not notarized by Apple, so it needs a one-time manual approval on first launch (see above). Notarization requires a $99/year Apple Developer membership.
+- The macOS build needs a one-time manual approval on first launch (see above).
 
 ---
 

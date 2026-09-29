@@ -4,16 +4,20 @@
 
 一款基于 PySide6 的桌面应用，通过**自然语言描述 → AI 生成 SQL → 在数据库执行并展示结果**。支持主流数据库和信创数据库，兼容多个主流 AI 大模型。
 
-> 原名 Text2SQL Assistant，v1.4.0 起更名「沐问 MuAsk」（mu 来自主域名 qqmu.com，ask = 自然语言提问），与同作者的 [jync](https://github.com/vfaner/jync)（数据同步）、[jargus](https://github.com/vfaner/jargus)（Java 代码评审）组成品牌系列。
+### 项目地址
 
-- 项目地址：https://github.com/vfaner/muask
-- 如果对你有帮助，欢迎 **Star ⭐**
+| 平台 | 地址 |
+|------|------|
+| GitHub | https://github.com/vfaner/muask |
+| Gitee（国内镜像） | https://gitee.com/super_rgh/muask |
+
+如果对你有帮助，欢迎 **Star ⭐**
 
 ---
 
 ## 📦 直接下载可执行文件（无需 Python 环境）
 
-不想折腾环境？直接到 **[Releases 页面](https://github.com/vfaner/muask/releases)** 下载对应平台的打包程序，不依赖 Python、不依赖任何库。三个平台的包都**没有代码签名**，所以 Windows 和 macOS 首次运行都要手动放行一次（各一次，之后再无提示），步骤见下。
+不想折腾环境？直接到 **[Releases 页面](https://github.com/vfaner/muask/releases)** 下载对应平台的打包程序，不依赖 Python、不依赖任何库。Windows 和 macOS 首次运行都要手动放行一次（各一次，之后再无提示），步骤见下。
 
 | 平台 | 下载文件 | 使用方式 |
 |------|---------|----------|
@@ -27,7 +31,7 @@
 
 ### 🪟 Windows 首次运行需放行一次
 
-程序**没有代码签名**（EV 代码签名证书一年数千元），从浏览器下载的 zip 会被打上 Mark-of-the-Web 标记，解压出来的 exe 继承该标记，于是 Microsoft Defender SmartScreen 会拦一次：
+首次运行时 Microsoft Defender SmartScreen 会拦一次：
 
 1. 双击 exe，弹出「**Windows 已保护你的电脑**」
 2. 这个弹窗默认只显示「不运行」按钮 —— 点左下角的「**更多信息**」
@@ -40,7 +44,7 @@
 
 ### 🍎 macOS 首次运行需放行一次
 
-应用**未经 Apple 公证**（公证需要 $99/年的 Apple Developer 会员），所以从网上下载后 macOS 会拦一次。放行步骤：
+从网上下载后 macOS 会拦一次。放行步骤：
 
 1. 双击 DMG，把 `muask.app` 拖到「应用程序」
 2. 双击应用 → 弹出「Apple 无法验证…是否包含恶意软件」→ 点**完成**（不要点「移到废纸篓」）
@@ -90,8 +94,17 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 ### 数据源配置
 ![数据源配置](assets/db_config.png)
 
+### 新增数据源
+![新增数据源](assets/db_config_add.png)
+
 ### AI 配置
 ![AI 配置](assets/ai_config.png)
+
+### 软件说明
+![软件说明](assets/soft_method.png)
+
+### 关于我们
+![关于我们](assets/about_me.png)
 
 ---
 
@@ -106,7 +119,7 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
   - **Anthropic 兼容 `/messages`**：Anthropic Claude、火山引擎 ARK（与上面是同一个厂商，协议下拉切到 Anthropic 即可，地址自动改写），以及自定义。
 - **友好错误处理**：SQL 执行失败弹独立错误对话框（可关闭 / 可滚动），旧结果不会残留；错误摘要提取一行显示。
 - **配置管理**：数据源和 AI 配置持久化到 `config.json`；密码、API Key 使用 base64 编码存储；老配置自动迁移。
-- **现代化 UI**：自绘无边框标题栏、右上角 GitHub / 捐赠按钮，Vue element-plus 风格的 Toast 通知，圆角、柔和配色，启动窗口自动居中。
+- **现代化 UI**：自绘无边框标题栏、右上角版本状态胶囊（自动检查 GitHub / Gitee 更新）+ 捐赠按钮，Vue element-plus 风格的 Toast 通知，圆角、柔和配色，启动窗口自动居中。
 
 ---
 
@@ -131,13 +144,17 @@ muask/
 │   ├── app_icon.icns              # macOS bundle 图标（由母图生成）
 │   ├── app_icon.ico               # Windows 可执行文件图标（由母图生成）
 │   ├── github.svg
+│   ├── tag.svg
 │   ├── donate.png
 │   ├── alipay.png
 │   ├── wechat.png
 │   ├── qq.png
 │   ├── text2sql.png
 │   ├── db_config.png
-│   └── ai_config.png
+│   ├── db_config_add.png
+│   ├── ai_config.png
+│   ├── soft_method.png
+│   └── about_me.png
 └── app/
     ├── __init__.py
     ├── paths.py                   # 资源/配置路径解析（源码 vs 打包、可写用户目录）
@@ -150,12 +167,15 @@ muask/
     ├── styles.py                  # QSS 样式
     ├── toast.py                   # Vue 风格 Toast 通知
     ├── error_dialog.py            # 错误弹窗（可关闭 / 可滚动）
-    ├── title_bar.py               # 自定义标题栏（GitHub / 捐赠 / 窗口控制）
+    ├── title_bar.py               # 自定义标题栏（版本检查 / 捐赠 / 窗口控制）
+    ├── update_dialog.py           # 新版本提示弹窗
+    ├── updater.py                 # GitHub / Gitee 版本检查
     ├── donate_dialog.py           # 打赏二维码弹窗
     ├── pages_text2sql.py          # Text2SQL 页面
     ├── pages_data_source.py       # 数据源配置页面
     ├── pages_ai.py                # AI 配置页面（多份配置管理）
     ├── pages_about.py             # 软件说明页面
+    ├── pages_about_us.py          # 关于我们页面
     └── main_window.py             # 主窗口
 ```
 
@@ -250,7 +270,7 @@ python main.py
 | 运行方式 | `config.json` 位置 |
 |---------|-------------------|
 | 从源码运行 | 项目根目录（示例见 `config.example.json`） |
-| macOS 打包版 | `~/Library/Application Suppor./muask/` |
+| macOS 打包版 | `~/Library/Application Support/muask/` |
 | Windows 打包版 | `%APPDATA%\muask\` |
 | Linux 打包版 | `$XDG_CONFIG_HOME/muask/`（默认 `~/.config/…`） |
 
@@ -306,7 +326,7 @@ python main.py
 ```bash
 pip install pyinstaller
 pyinstaller --clean --noconfirm muask.spec
-# 产物：dis./muask[.exe]
+# 产物：dist/muask[.exe]
 ```
 
 **macOS** —— `.app` bundle + DMG，脚本会顺带做 ad-hoc 签名：
@@ -320,7 +340,7 @@ pip install pyinstaller
 
 macOS 必须打成 `.app` 而不是裸可执行文件：Gatekeeper **不给**未签名的裸 Unix 可执行文件任何放行入口，弹窗只有「移到废纸篓」一个选项，用户根本没法运行。
 
-若你有 Apple Developer 会员（$99/年），把 `scripts/build_macos.sh` 里两处 `TODO(notarize)` 按注释改成真实 Developer ID 并加上 `notarytool` / `stapler` 两步，用户即可**零提示**直接双击运行。
+若你有 Apple Developer 会员，把 `scripts/build_macos.sh` 里两处 `TODO(notarize)` 按注释改成真实 Developer ID 并加上 `notarytool` / `stapler` 两步，用户即可**零提示**直接双击运行。
 
 **换图标**：
 - 素材本身是**透明底方形图标**：跑 `python3 scripts/make_icons.py 你的图.png`，脚本会归一化生成 1024x1024 母版 `assets/app_icon.png`（Qt 窗口图标），再重新生成 `.icns` / `.ico`。
@@ -339,7 +359,7 @@ macOS 必须打成 `.app` 而不是裸可执行文件：Gatekeeper **不给**未
 - 分页对复杂 SQL（含 `ORDER BY / GROUP BY / WITH`）以子查询方式包裹，绝大多数场景可用；极少数极端 SQL 可能需要用户手动加分页。
 - 安全性：为便于开发调试，允许所有 SQL 操作。生产环境务必单独做权限控制。
 - 多语句一次执行不支持（SQLAlchemy `text()` 底层驱动通常一次只发一条），需要一条一条执行。
-- macOS 版未经 Apple 公证，首次运行需手动放行一次（见上文）。公证需要 $99/年的 Apple Developer 会员。
+- macOS 版首次运行需手动放行一次（见上文）。
 
 ---
 

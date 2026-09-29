@@ -4,8 +4,9 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
     QSplitter, QVBoxLayout, QWidget,
 )
@@ -115,10 +116,10 @@ class AIConfigPage(QWidget):
         self.model_edit.setMinimumWidth(560)
         self.model_edit.setPlaceholderText("例如 gpt-4o-mini / qwen-max / deepseek-chat / doubao-1-5-pro-32k-250115 / claude-3-5-sonnet-latest")
 
-        self.temp_spin = QDoubleSpinBox()
-        self.temp_spin.setRange(0.0, 2.0)
-        self.temp_spin.setSingleStep(0.1)
-        self.temp_spin.setValue(0.2)
+        self.temp_edit = QLineEdit("0.2")
+        self.temp_edit.setFixedWidth(110)
+        self.temp_edit.setAlignment(Qt.AlignCenter)
+        self.temp_edit.setValidator(QDoubleValidator(0.0, 2.0, 2, self))
 
         form.addRow("配置名称", self.name_edit)
         form.addRow("厂商", self.provider_combo)
@@ -126,7 +127,7 @@ class AIConfigPage(QWidget):
         form.addRow("API 地址", self.api_base_edit)
         form.addRow("API Key", self.api_key_edit)
         form.addRow("模型名称", self.model_edit)
-        form.addRow("Temperature", self.temp_spin)
+        form.addRow("Temperature", self.temp_edit)
 
         right_l.addWidget(form_group)
 
@@ -192,7 +193,7 @@ class AIConfigPage(QWidget):
         self.api_base_edit.setText(url)
         self.model_edit.setText(model)
         self.api_key_edit.setText("")
-        self.temp_spin.setValue(0.2)
+        self.temp_edit.setText("0.2")
 
     def _fill_form(self, cfg: Dict[str, Any]) -> None:
         self._current_name = cfg.get("name")
@@ -214,7 +215,7 @@ class AIConfigPage(QWidget):
         self.api_base_edit.setText(cfg.get("api_base", ""))
         self.api_key_edit.setText(cfg.get("api_key", ""))
         self.model_edit.setText(cfg.get("model", ""))
-        self.temp_spin.setValue(float(cfg.get("temperature", 0.2) or 0.2))
+        self.temp_edit.setText(str(cfg.get("temperature", 0.2) or 0.2))
 
     def _read_form(self) -> Optional[Dict[str, Any]]:
         name = self.name_edit.text().strip()
@@ -229,6 +230,13 @@ class AIConfigPage(QWidget):
         if not api_base or not model or (needs_key and not api_key):
             toast.warning(self, "API 地址 / API Key / 模型名称 不能为空（Ollama 本地服务可免填 Key）")
             return None
+        try:
+            temperature = float(self.temp_edit.text().strip() or "0.2")
+        except ValueError:
+            toast.warning(self, "Temperature 必须是 0.0–2.0 的数字")
+            return None
+        temperature = max(0.0, min(2.0, temperature))
+
         return {
             "name": name,
             "provider": self.provider_combo.currentData(),
@@ -236,7 +244,7 @@ class AIConfigPage(QWidget):
             "api_base": api_base,
             "api_key": api_key,
             "model": model,
-            "temperature": float(self.temp_spin.value()),
+            "temperature": temperature,
         }
 
     def _set_protocol(self, protocol: str) -> None:

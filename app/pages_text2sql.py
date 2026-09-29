@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 
 import sqlparse
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QLabel, QPlainTextEdit,
-    QProgressBar, QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem,
+    QComboBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPlainTextEdit,
+    QProgressBar, QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
     QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -144,11 +144,12 @@ class Text2SQLPage(QWidget):
         result_header.addWidget(result_title)
         result_header.addStretch(1)
         result_header.addWidget(QLabel("每页:"))
-        self.page_size_spin = QSpinBox()
-        self.page_size_spin.setRange(5, 1000)
-        self.page_size_spin.setValue(self._page_size)
-        self.page_size_spin.valueChanged.connect(self._on_page_size_change)
-        result_header.addWidget(self.page_size_spin)
+        self.page_size_edit = QLineEdit(str(self._page_size))
+        self.page_size_edit.setFixedWidth(70)
+        self.page_size_edit.setAlignment(Qt.AlignCenter)
+        self.page_size_edit.setValidator(QIntValidator(5, 1000, self))
+        self.page_size_edit.editingFinished.connect(self._on_page_size_editing_finished)
+        result_header.addWidget(self.page_size_edit)
 
         self.btn_prev = QPushButton("上一页")
         self.btn_prev.setProperty("flat", True)
@@ -221,9 +222,9 @@ class Text2SQLPage(QWidget):
 
     def refresh_page_size(self) -> None:
         self._page_size = self.cfg.get_page_size()
-        self.page_size_spin.blockSignals(True)
-        self.page_size_spin.setValue(self._page_size)
-        self.page_size_spin.blockSignals(False)
+        self.page_size_edit.blockSignals(True)
+        self.page_size_edit.setText(str(self._page_size))
+        self.page_size_edit.blockSignals(False)
 
     def refresh_ai_configs(self) -> None:
         """Reload the AI-config dropdown from ConfigManager."""
@@ -365,9 +366,17 @@ class Text2SQLPage(QWidget):
         if name:
             self.status_message.emit(f"已切换到 AI: {name}")
 
-    def _on_page_size_change(self, val: int) -> None:
-        self._page_size = int(val)
-        self.cfg.set_page_size(self._page_size)
+    def _on_page_size_editing_finished(self) -> None:
+        text = self.page_size_edit.text().strip()
+        try:
+            val = int(text)
+        except ValueError:
+            self.page_size_edit.setText(str(self._page_size))
+            return
+        val = max(5, min(1000, val))
+        self._page_size = val
+        self.cfg.set_page_size(val)
+        self.page_size_edit.setText(str(val))
         try:
             self.cfg.save()
         except Exception:

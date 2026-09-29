@@ -57,25 +57,31 @@ QToolButton#titleCloseBtn:hover {
 QTabWidget::pane {
     border: none;
     background: #ffffff;
-    border-radius: 10px;
-    margin: 6px;
+    border-top: 1px solid #e6ebf2;
+    margin: 0px;
+}
+QTabBar {
+    background: #ffffff;
+    border: none;
+    qproperty-drawBase: 0;
 }
 QTabBar::tab {
     background: transparent;
-    padding: 10px 24px;
-    margin-right: 4px;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
+    padding: 11px 26px;
+    margin-right: 2px;
+    border: none;
+    border-bottom: 3px solid transparent;
     color: #6c7a89;
     font-weight: 500;
 }
 QTabBar::tab:selected {
-    background: #ffffff;
+    background: transparent;
     color: #2c7be5;
     font-weight: 600;
+    border-bottom: 3px solid #2c7be5;
 }
 QTabBar::tab:hover:!selected {
-    background: rgba(44,123,229,0.08);
+    background: rgba(44,123,229,0.06);
     color: #2c7be5;
 }
 
@@ -106,7 +112,7 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
     background: #ffffff;
     border: 1px solid #d5dbe0;
     border-radius: 6px;
-    padding: 6px 8px;
+    padding: 7px 10px;
     selection-background-color: #2c7be5;
 }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus {
@@ -132,37 +138,39 @@ QLabel[title="true"] {
 
 /* Group boxes */
 QGroupBox {
-    border: 1px solid #e0e6ed;
-    border-radius: 8px;
-    margin-top: 14px;
-    padding: 10px;
+    border: 1px solid #e6ebf2;
+    border-radius: 10px;
+    margin-top: 16px;
+    padding: 18px 14px 14px 14px;
     background: #ffffff;
     font-weight: 600;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 0 6px;
-    color: #34495e;
+    padding: 0 8px;
+    color: #2c7be5;
+    background: #f5f7fa;
 }
 
 /* Lists */
 QListWidget {
     background: #ffffff;
-    border: 1px solid #e0e6ed;
-    border-radius: 8px;
-    padding: 4px;
+    border: 1px solid #e6ebf2;
+    border-radius: 10px;
+    padding: 6px;
 }
 QListWidget::item {
-    padding: 8px 10px;
-    border-radius: 4px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin: 2px 0;
 }
 QListWidget::item:selected {
     background: #2c7be5;
     color: white;
 }
 QListWidget::item:hover:!selected {
-    background: rgba(44,123,229,0.10);
+    background: rgba(44,123,229,0.08);
 }
 
 /* Table */

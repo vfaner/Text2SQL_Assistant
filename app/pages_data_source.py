@@ -96,8 +96,9 @@ class DataSourcePage(QWidget):
 
         self.params_edit = QPlainTextEdit()
         self.params_edit.setPlaceholderText('可选。JSON 格式，如 {"charset": "utf8mb4", "service_name": "ORCL"}')
-        # 连接参数是多行 JSON（自定义数据源还要写完整 url），给它更高且能随窗口拉伸
-        self.params_edit.setMinimumHeight(140)
+        # 单行高度即可（JSON 通常很短），用户需要时自己拉大
+        self.params_edit.setFixedHeight(60)
+        self.params_edit.setMinimumWidth(380)
 
         # 自定义数据库类型专用：用户自备驱动的依赖目录（加进 sys.path）
         self.lib_row = QWidget()

@@ -10,9 +10,11 @@ from PySide6.QtWidgets import (
 from .config import ConfigManager
 from .pages_ai import AIConfigPage
 from .pages_about import AboutPage
+from .pages_about_us import AboutUsPage
 from .pages_data_source import DataSourcePage
 from .pages_text2sql import Text2SQLPage
 from .title_bar import TitleBar
+from . import __version__
 from . import toast as toast_mod
 
 
@@ -76,11 +78,13 @@ class MainWindow(QMainWindow):
         self.data_source_page = DataSourcePage(self.cfg)
         self.ai_page = AIConfigPage(self.cfg)
         self.about_page = AboutPage()
+        self.about_us_page = AboutUsPage()
 
         self.tabs.addTab(self.text2sql_page, "  沐问  ")
         self.tabs.addTab(self.data_source_page, "  数据源配置  ")
         self.tabs.addTab(self.ai_page, "  AI 配置  ")
         self.tabs.addTab(self.about_page, "  软件说明  ")
+        self.tabs.addTab(self.about_us_page, "  关于我们  ")
 
         outer.addWidget(self.tabs, 1)
 
@@ -92,10 +96,14 @@ class MainWindow(QMainWindow):
         self.status_ds_label = QLabel("数据源: -")
         self.status_ai_label = QLabel("AI: -")
         self.status_msg_label = QLabel("就绪")
+        self.status_version_label = QLabel(f"v{__version__}")
+        self.status_version_label.setStyleSheet("color:#b0bec5;")
         self.status.addWidget(self.status_msg_label, 1)
         self.status.addPermanentWidget(self.status_ds_label)
         self.status.addPermanentWidget(QLabel("  |  "))
         self.status.addPermanentWidget(self.status_ai_label)
+        self.status.addPermanentWidget(QLabel("  |  "))
+        self.status.addPermanentWidget(self.status_version_label)
 
     def _wire_signals(self) -> None:
         self.data_source_page.data_sources_changed.connect(self._on_data_sources_changed)
@@ -140,3 +148,12 @@ class MainWindow(QMainWindow):
     def _set_status(self, msg: str) -> None:
         self.status_msg_label.setText(msg)
         self._refresh_status()
+
+    def closeEvent(self, event) -> None:
+        # Let the background version probe finish (or time out) before tearing
+        # down, otherwise Qt prints "QThread: Destroyed while thread is still
+        # running" on every quit.
+        updater = getattr(self.title_bar, "_updater", None)
+        if updater is not None and updater.isRunning():
+            updater.wait(2000)
+        super().closeEvent(event)
