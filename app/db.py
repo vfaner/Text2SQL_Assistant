@@ -32,13 +32,19 @@ DriverHint = Dict[str, str]
 # Windows/Linux wheels only).
 DRIVER_HINTS: Dict[str, DriverHint] = {
     "mysql":       {"pkg": "pymysql",    "install": "pip install pymysql"},
+    "mariadb":     {"pkg": "pymysql",    "install": "pip install pymysql（MariaDB 兼容 MySQL 协议，打包版已内置）"},
     "postgresql":  {"pkg": "psycopg2",   "install": "pip install psycopg2-binary"},
+    "opengauss":   {"pkg": "psycopg2",   "install": "pip install psycopg2-binary（OpenGauss 兼容 PG 协议）"},
+    "highgo":      {"pkg": "psycopg2",   "install": "pip install psycopg2-binary（瀚高基于 PostgreSQL 内核，兼容 PG 协议）"},
+    "vastbase":    {"pkg": "psycopg2",  "install": "pip install psycopg2-binary（海量 Vastbase 基于 openGauss/PostgreSQL 内核，兼容 PG 协议）"},
+    "kingbase":    {"pkg": "ksycopg2",   "install": "pip install ksycopg2（人大金仓官方驱动，打包版已内置）或 pip install psycopg2-binary（PG 协议）"},
+    "oceanbase":   {"pkg": "pymysql",   "install": "pip install pymysql（OceanBase MySQL 租户兼容 MySQL 协议，默认端口 2881；Oracle 租户请改用「自定义」）"},
+    "tidb":        {"pkg": "pymysql",    "install": "pip install pymysql（TiDB 兼容 MySQL 协议）"},
     "oracle":      {"pkg": "oracledb",   "install": "pip install oracledb（纯 Python 瘦模式，无需 Oracle 客户端）"},
     "mssql":       {"pkg": "pymssql",    "install": "pip install pymssql（wheel 已内置 FreeTDS，无需安装 ODBC）"},
-    "opengauss":   {"pkg": "psycopg2",   "install": "pip install psycopg2-binary（OpenGauss 兼容 PG 协议）"},
     "dm":          {"pkg": "dmPython",   "install": "Windows/Linux 打包版已内置达梦官方 dmpython（含达梦客户端库）；其他环境请在 Windows/Linux 上 pip install dmpython"},
-    "kingbase":    {"pkg": "ksycopg2",   "install": "pip install ksycopg2（人大金仓官方驱动，打包版已内置）或 pip install psycopg2-binary（PG 协议）"},
     "gbase":       {"pkg": "pymysql",    "install": "pip install pymysql（GBase 8a 兼容 MySQL 协议，打包版已内置）"},
+    "db2":         {"pkg": "ibm_db",     "install": "pip install ibm_db ibm-db-sa（IBM 官方 DB2 驱动，三平台 wheel 齐全）"},
     "custom":      {"pkg": "-",          "install": "请在参数中提供 SQLAlchemy 连接字符串 url，并自行安装对应驱动"},
 }
 
@@ -70,11 +76,18 @@ def build_engine_url(ds: Dict[str, Any]) -> str:
 
     if dtype == "mysql":
         return f"mysql+pymysql://{user}:{pwd}@{host}:{port or 3306}/{db}{qs({'charset': params.get('charset', 'utf8mb4')})}"
+    if dtype in ("mariadb", "oceanbase", "tidb"):
+        # MariaDB, OceanBase MySQL 租户, TiDB all speak the MySQL wire protocol,
+        # so PyMySQL connects directly — no per-vendor driver to bundle.
+        default_port = {"mariadb": 3306, "oceanbase": 2881, "tidb": 4000}[dtype]
+        return f"mysql+pymysql://{user}:{pwd}@{host}:{port or default_port}/{db}{qs({'charset': params.get('charset', 'utf8mb4')})}"
     if dtype == "postgresql":
         return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port or 5432}/{db}{qs({})}"
-    if dtype == "opengauss":
-        # OpenGauss is PG protocol compatible; use psycopg2.
-        return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port or 5432}/{db}{qs({})}"
+    if dtype in ("opengauss", "highgo", "vastbase"):
+        # OpenGauss / HighGo / Vastbase are all PostgreSQL-wire-compatible
+        # (openGauss or PG forks), so psycopg2 connects directly.
+        default_port = {"opengauss": 5432, "highgo": 5866, "vastbase": 5432}[dtype]
+        return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port or default_port}/{db}{qs({})}"
     if dtype == "kingbase":
         # Prefer Kingbase's own ksycopg2 (bundled in the packaged app); fall
         # back to plain psycopg2 — KingbaseES also speaks the PostgreSQL wire
@@ -96,6 +109,10 @@ def build_engine_url(ds: Dict[str, Any]) -> str:
         if params.get("tds_version"):
             extra["tds_version"] = params["tds_version"]
         return f"mssql+pymssql://{user}:{pwd}@{host}:{port or 1433}/{db}{qs(extra)}"
+    if dtype == "db2":
+        # IBM's official ibm_db_sa dialect; ibm_db wheels bundle the DB2
+        # client (clidriver) for win/linux/mac, no separate DB2 client install.
+        return f"ibm_db_sa://{user}:{pwd}@{host}:{port or 50000}/{db}"
     if dtype == "dm":
         # DmDialect is registered in app.db_dialects; the actual login goes
         # through the explicit creator in create_db_engine().
@@ -124,6 +141,16 @@ def create_db_engine(ds: Dict[str, Any]) -> Engine:
     dtype = (ds.get("type") or "").lower()
     url = build_engine_url(ds)
     engine_kwargs: Dict[str, Any] = {"pool_pre_ping": True, "future": True}
+
+    # 自定义数据源：用户自备的驱动依赖目录先加进模块搜索路径，
+    # 这样 url 里那个方言（如 jaydebeapi、jdbc+xxx）在 import 时能找到。
+    lib_dir = ds.get("lib_dir")
+    if lib_dir:
+        import os
+        import sys
+        lib_dir = os.path.abspath(os.path.expanduser(str(lib_dir)))
+        if os.path.isdir(lib_dir) and lib_dir not in sys.path:
+            sys.path.insert(0, lib_dir)
 
     if dtype == "dm" and not _has_module("dmSQLAlchemy"):
         # Dameng's official dmSQLAlchemy dialect parses the URL itself when
@@ -164,7 +191,7 @@ def test_connection(ds: Dict[str, Any]) -> Tuple[bool, str]:
 
     try:
         # Oracle (pre-23c) and DM require a FROM clause; DUAL exists on both.
-        ping = "SELECT 1 FROM DUAL" if dtype in ("oracle", "dm") else "SELECT 1"
+        ping = "SELECT 1 FROM DUAL" if dtype in ("oracle", "dm", "db2") else "SELECT 1"
         with engine.connect() as conn:
             conn.execute(text(ping))
         return True, "连接成功！"
@@ -473,10 +500,11 @@ def build_paginated_sql(sql: str, dtype: str, offset: int, limit: int) -> str:
     body = _strip_trailing_semi(sql)
     dtype = (dtype or "").lower()
 
-    if dtype in ("mysql", "postgresql", "opengauss", "kingbase", "gbase"):
+    if dtype in ("mysql", "mariadb", "postgresql", "opengauss", "highgo", "vastbase",
+                 "kingbase", "oceanbase", "tidb", "gbase"):
         return f"SELECT * FROM ({body}) AS __t LIMIT {limit} OFFSET {offset}"
-    if dtype in ("oracle", "mssql"):
-        # Standard SQL:2008 syntax - Oracle 12c+ and SQL Server 2012+ support it
+    if dtype in ("oracle", "mssql", "db2"):
+        # Standard SQL:2008 syntax - Oracle 12c+, SQL Server 2012+, DB2 11+
         return f"SELECT * FROM ({body}) __t OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
     if dtype in ("dm",):
         return f"SELECT * FROM ({body}) __t LIMIT {limit} OFFSET {offset}"

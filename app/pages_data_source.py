@@ -5,10 +5,11 @@ import json
 from typing import Any, Dict, Optional
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
-    QSpinBox, QSplitter, QVBoxLayout, QWidget,
+    QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
+    QPushButton, QSplitter, QVBoxLayout, QWidget,
 )
 
 from .config import ConfigManager, DB_TYPES
@@ -83,9 +84,10 @@ class DataSourcePage(QWidget):
         self.type_combo.currentIndexChanged.connect(self._on_type_change)
 
         self.host_edit = QLineEdit("127.0.0.1")
-        self.port_spin = QSpinBox()
-        self.port_spin.setRange(0, 65535)
-        self.port_spin.setValue(3306)
+        # 端口用纯文本框 + 数字校验，取代 QSpinBox 的上下箭头
+        self.port_edit = QLineEdit("3306")
+        self.port_edit.setValidator(QIntValidator(0, 65535, self))
+        self.port_edit.setMaximumWidth(110)
 
         self.db_edit = QLineEdit()
         self.user_edit = QLineEdit()
@@ -94,16 +96,37 @@ class DataSourcePage(QWidget):
 
         self.params_edit = QPlainTextEdit()
         self.params_edit.setPlaceholderText('可选。JSON 格式，如 {"charset": "utf8mb4", "service_name": "ORCL"}')
-        self.params_edit.setFixedHeight(80)
+        # 连接参数是多行 JSON（自定义数据源还要写完整 url），给它更高且能随窗口拉伸
+        self.params_edit.setMinimumHeight(140)
+
+        # 自定义数据库类型专用：用户自备驱动的依赖目录（加进 sys.path）
+        self.lib_row = QWidget()
+        lib_l = QHBoxLayout(self.lib_row)
+        lib_l.setContentsMargins(0, 0, 0, 0)
+        self.lib_edit = QLineEdit()
+        self.lib_edit.setPlaceholderText("必填：自定义驱动的依赖目录（含 .pyd/.so 或纯 Python 包）")
+        btn_browse = QPushButton("浏览…")
+        btn_browse.setProperty("flat", True)
+        btn_browse.clicked.connect(self._on_browse_lib)
+        lib_l.addWidget(self.lib_edit, 1)
+        lib_l.addWidget(btn_browse)
+
+        for w in (self.name_edit, self.type_combo, self.host_edit, self.port_edit,
+                  self.db_edit, self.user_edit, self.pwd_edit):
+            w.setMinimumWidth(380)
 
         form.addRow("数据源名称", self.name_edit)
         form.addRow("数据库类型", self.type_combo)
         form.addRow("主机地址", self.host_edit)
-        form.addRow("端口", self.port_spin)
+        form.addRow("端口", self.port_edit)
         form.addRow("数据库名", self.db_edit)
         form.addRow("用户名", self.user_edit)
         form.addRow("密码", self.pwd_edit)
         form.addRow("连接参数", self.params_edit)
+        self.lib_label = QLabel("依赖目录")
+        form.addRow(self.lib_label, self.lib_row)
+        self.lib_row.setVisible(False)
+        self.lib_label.setVisible(False)
 
         right_l.addWidget(form_group)
 
@@ -148,11 +171,12 @@ class DataSourcePage(QWidget):
         self.name_edit.setText("")
         self.type_combo.setCurrentIndex(0)
         self.host_edit.setText("127.0.0.1")
-        self.port_spin.setValue(3306)
+        self.port_edit.setText("3306")
         self.db_edit.setText("")
         self.user_edit.setText("")
         self.pwd_edit.setText("")
         self.params_edit.setPlainText("")
+        self.lib_edit.setText("")
 
     def _fill_form(self, ds: Dict[str, Any]) -> None:
         self._current_name = ds.get("name")
@@ -164,18 +188,32 @@ class DataSourcePage(QWidget):
                 break
         self.type_combo.setCurrentIndex(idx)
         self.host_edit.setText(ds.get("host", ""))
-        self.port_spin.setValue(int(ds.get("port") or 0))
+        self.port_edit.setText(str(int(ds.get("port") or 0)))
         self.db_edit.setText(ds.get("database", ""))
         self.user_edit.setText(ds.get("username", ""))
         self.pwd_edit.setText(ds.get("password", ""))
         params = ds.get("params") or {}
         self.params_edit.setPlainText(json.dumps(params, ensure_ascii=False, indent=2) if params else "")
+        self.lib_edit.setText(ds.get("lib_dir", "") or "")
 
     def _read_form(self) -> Optional[Dict[str, Any]]:
         name = self.name_edit.text().strip()
         if not name:
             toast.warning(self, "数据源名称不能为空")
             return None
+
+        port_txt = self.port_edit.text().strip()
+        if not port_txt:
+            port = 0
+        else:
+            try:
+                port = int(port_txt)
+                if not 0 <= port <= 65535:
+                    raise ValueError
+            except ValueError:
+                toast.warning(self, "端口必须是 0–65535 的数字")
+                return None
+
         params_txt = self.params_edit.toPlainText().strip()
         params: Dict[str, Any] = {}
         if params_txt:
@@ -187,14 +225,25 @@ class DataSourcePage(QWidget):
                 toast.warning(self, f"连接参数不是有效 JSON: {e}")
                 return None
 
+        dtype = self.type_combo.currentData()
+        lib_dir = self.lib_edit.text().strip()
+        if dtype == "custom":
+            if not lib_dir:
+                toast.warning(self, "自定义数据库必须填写驱动的「依赖目录」（程序会把它加入模块搜索路径）")
+                return None
+            if not params.get("url"):
+                toast.warning(self, "自定义数据库还必须在「连接参数」中填写 SQLAlchemy 连接字符串 url")
+                return None
+
         return {
             "name": name,
-            "type": self.type_combo.currentData(),
+            "type": dtype,
             "host": self.host_edit.text().strip(),
-            "port": self.port_spin.value(),
+            "port": port,
             "database": self.db_edit.text().strip(),
             "username": self.user_edit.text().strip(),
             "password": self.pwd_edit.text(),
+            "lib_dir": lib_dir,
             "params": params,
         }
 
@@ -210,12 +259,26 @@ class DataSourcePage(QWidget):
 
     def _on_type_change(self, _idx: int) -> None:
         code = self.type_combo.currentData()
+        # 自定义类型才需要指定驱动依赖目录
+        is_custom = code == "custom"
+        self.lib_row.setVisible(is_custom)
+        self.lib_label.setVisible(is_custom)
         for _label, c, port in DB_TYPES:
             if c == code:
                 # Only change port if the current one is a known default of some other type
-                if self.port_spin.value() in [3306, 5432, 1521, 1433, 5236, 54321, 5258, 0]:
-                    self.port_spin.setValue(port)
+                try:
+                    current_port = int(self.port_edit.text() or 0)
+                except ValueError:
+                    current_port = 0
+                if current_port in [3306, 5432, 1521, 1433, 5236, 54321, 5258,
+                                    5866, 2881, 4000, 50000, 0]:
+                    self.port_edit.setText(str(port))
                 break
+
+    def _on_browse_lib(self) -> None:
+        d = QFileDialog.getExistingDirectory(self, "选择自定义驱动的依赖目录")
+        if d:
+            self.lib_edit.setText(d)
 
     def _on_new(self) -> None:
         self.list_widget.setCurrentItem(None)

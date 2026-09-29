@@ -20,11 +20,6 @@ from . import toast
 from .workers import AITestWorker
 
 
-PROVIDER_LABEL_BY_CODE = {code: label for label, code, *_ in AI_PROVIDERS}
-# Retired vendor codes still found in old config.json files.
-PROVIDER_LABEL_BY_CODE["volcengine_anthropic"] = PROVIDER_LABEL_BY_CODE["volcengine"]
-
-
 class AIConfigPage(QWidget):
     """Manages a list of AI configs with add/edit/delete/test/save (mirrors DataSourcePage)."""
 
@@ -175,9 +170,10 @@ class AIConfigPage(QWidget):
         self.list_widget.clear()
         for cfg in self.cfg.get_ai_configs():
             name = cfg.get("name", "(未命名)")
-            provider_label = PROVIDER_LABEL_BY_CODE.get(cfg.get("provider", ""), cfg.get("provider", ""))
             marker = " ✓ 当前" if name == current_used else ""
-            item = QListWidgetItem(f"{name}   [{provider_label}]{marker}")
+            # 左侧列表只显示配置名：厂商 / 协议 / 模型在右侧「详细配置」里已有完整展示，
+            # 列表里再拼上厂商名（如「火山引擎（Volcengine ARK · Coding Plan）」）会撑爆宽度。
+            item = QListWidgetItem(f"{name}{marker}")
             item.setData(Qt.UserRole, name)
             self.list_widget.addItem(item)
 
@@ -228,8 +224,10 @@ class AIConfigPage(QWidget):
         api_base = self.api_base_edit.text().strip()
         api_key = self.api_key_edit.text().strip()
         model = self.model_edit.text().strip()
-        if not api_base or not api_key or not model:
-            toast.warning(self, "API 地址 / API Key / 模型名称 不能为空")
+        # Ollama 是本地推理，OpenAI 兼容端点不校验 key，允许留空
+        needs_key = self.provider_combo.currentData() != "ollama"
+        if not api_base or not model or (needs_key and not api_key):
+            toast.warning(self, "API 地址 / API Key / 模型名称 不能为空（Ollama 本地服务可免填 Key）")
             return None
         return {
             "name": name,

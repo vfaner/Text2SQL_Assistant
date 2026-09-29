@@ -75,12 +75,13 @@ def _take_all(pkg: str) -> None:
     hiddenimports.extend(h)
 
 
-for _pkg in ("psycopg2", "oracledb", "pymssql", "ksycopg2", "dmssl", "dmSQLAlchemy"):
+for _pkg in ("psycopg2", "oracledb", "pymssql", "ksycopg2", "dmssl", "dmSQLAlchemy",
+             "ibm_db", "ibm_db_sa"):
     _take_all(_pkg)
 
 # dmSQLAlchemy reads package versions via importlib.metadata at import time;
 # make sure the dist-info is present inside the frozen app.
-for _dist in ("dmpython", "dmSQLAlchemy", "ksycopg2"):
+for _dist in ("dmpython", "dmSQLAlchemy", "ksycopg2", "ibm_db"):
     if _module_present(_dist if _dist != "dmpython" else "dmPython"):
         try:
             datas += copy_metadata(_dist)

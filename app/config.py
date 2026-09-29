@@ -14,13 +14,19 @@ CONFIG_FILE = user_config_path()
 # Supported database types shown in dropdown -> (display name, type code, default port)
 DB_TYPES = [
     ("MySQL", "mysql", 3306),
+    ("MariaDB", "mariadb", 3306),
     ("PostgreSQL", "postgresql", 5432),
+    ("OpenGauss", "opengauss", 5432),
+    ("瀚高（HighGo）", "highgo", 5866),
+    ("海量（Vastbase）", "vastbase", 5432),
+    ("人大金仓（KingbaseES）", "kingbase", 54321),
+    ("OceanBase", "oceanbase", 2881),
+    ("TiDB", "tidb", 4000),
+    ("达梦（DM）", "dm", 5236),
+    ("南大通用（GBase 8a）", "gbase", 5258),
     ("Oracle", "oracle", 1521),
     ("SQL Server", "mssql", 1433),
-    ("OpenGauss", "opengauss", 5432),
-    ("达梦（DM）", "dm", 5236),
-    ("人大金仓（KingbaseES）", "kingbase", 54321),
-    ("南大通用（GBase 8a）", "gbase", 5258),
+    ("DB2", "db2", 50000),
     ("其他（自定义）", "custom", 0),
 ]
 
@@ -36,17 +42,21 @@ DB_TYPES = [
 AI_PROVIDERS = [
     # ── OpenAI-compatible vendors ─────────────────────────────────────
     ("OpenAI", "openai", "openai", "https://api.openai.com/v1", "gpt-4o-mini"),
-    ("阿里百炼（Qwen）", "bailian", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"),
-    ("千问（Qwen）", "qwen", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-    ("火山引擎（Volcengine ARK · Coding Plan）", "volcengine", "openai",
+    ("阿里百炼", "bailian", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"),
+    ("千问", "qwen", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
+    ("火山引擎", "volcengine", "openai",
      "https://ark.cn-beijing.volces.com/api/coding/v3", "ark-code-latest"),
-    ("豆包（Doubao）", "doubao", "openai", "https://ark.cn-beijing.volces.com/api/v3", "doubao-pro-32k"),
+    ("豆包", "doubao", "openai", "https://ark.cn-beijing.volces.com/api/v3", "doubao-pro-32k"),
     ("DeepSeek", "deepseek", "openai", "https://api.deepseek.com/v1", "deepseek-chat"),
-    ("百度千帆（ERNIE）", "qianfan", "openai", "https://qianfan.baidubce.com/v2", "ernie-4.0-turbo-8k"),
+    ("百度千帆", "qianfan", "openai", "https://qianfan.baidubce.com/v2", "ernie-4.0-turbo-8k"),
     ("智谱 GLM", "zhipu", "openai", "https://open.bigmodel.cn/api/paas/v4", "glm-4-plus"),
-    ("Kimi（Moonshot）", "kimi", "openai", "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
+    ("Kimi", "kimi", "openai", "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
     ("胜算云", "shengsuanyun", "openai", "https://router.shengsuanyun.com/api/v1", "deepseek-chat"),
     ("GitHub Copilot / Models", "github_models", "openai", "https://models.inference.ai.azure.com", "gpt-4o-mini"),
+    # Ollama is local and exposes an OpenAI-compatible endpoint at /v1; no API
+    # key needed (leave it blank). Model name must match what you pulled with
+    # `ollama pull <model>` (qwen2.5 / llama3.1 / deepseek-r1 …).
+    ("Ollama（本地）", "ollama", "openai", "http://localhost:11434/v1", "qwen2.5"),
     ("兼容 OpenAI 协议（自定义）", "openai_custom", "openai", "", ""),
 
     # ── Anthropic-compatible vendors ──────────────────────────────────

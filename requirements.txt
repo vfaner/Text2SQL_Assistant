@@ -21,15 +21,20 @@ sqlparse>=0.4.4
 #
 # Pure-Python / self-contained wheels, available on every platform (incl. macOS):
 #
-# MySQL / GBase 8a (GBase speaks the MySQL protocol)
+# MySQL / MariaDB / OceanBase(MySQL 租户) / TiDB / GBase 8a — all speak the
+# MySQL wire protocol, so PyMySQL alone covers five dropdown types.
 PyMySQL>=1.1.0
-# PostgreSQL / OpenGauss (PG wire protocol); also the fallback driver for
-# KingbaseES when its native driver isn't available
+# PostgreSQL / OpenGauss / 瀚高 HighGo / 海量 Vastbase (PG wire protocol);
+# also the fallback driver for KingbaseES when its native driver isn't available
 psycopg2-binary>=2.9.7
 # Oracle — thin mode is pure Python, no Oracle Instant Client needed
 oracledb>=2.0.0
 # SQL Server — wheels bundle FreeTDS, no unixODBC / msodbcsql system packages
 pymssql>=2.3.0
+# DB2 — IBM's ibm_db wheel bundles the DB2 client (clidriver) for
+# win/linux/mac x86_64/arm64; ibm-db-sa is the SQLAlchemy dialect (py3-none-any)
+ibm_db>=3.1.0
+ibm-db-sa>=0.4.0
 #
 # Native 信创 drivers, Windows / Linux wheels only (the release CI builds on
 # Python 3.11, so these land inside the packaged Windows and Linux apps). The
@@ -45,9 +50,10 @@ dmpython>=2.5.0; sys_platform != "darwin" and python_version >= "3.10"
 dmSQLAlchemy>=2.0.17; sys_platform != "darwin" and python_version >= "3.10"
 ksycopg2>=2.9.0; sys_platform != "darwin" and python_version >= "3.10" and python_version < "3.14"
 
-# 神通（ShenTong）: the vendor publishes only JDBC / ODBC drivers — no
-# redistributable Python driver exists, so it is not offered as a built-in
-# type. Use the "custom" data source with your own driver + SQLAlchemy URL.
+# 神通（ShenTong）/ 崖山 YashanDB / H2: the vendors publish only JDBC / ODBC
+# drivers (H2 is a pure-Java engine needing a JVM + h2.jar) — no redistributable
+# pure-Python driver exists on PyPI, so they are not offered as built-in types.
+# Use the "custom" data source with your own driver + SQLAlchemy URL.
 
 # Optional: only needed if you replace the base64 obfuscation in app/config.py
 # with real encryption. Nothing imports it as shipped.

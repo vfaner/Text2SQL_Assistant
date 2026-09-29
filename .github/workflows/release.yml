@@ -88,7 +88,7 @@ jobs:
         run: |
           python - <<'PY'
           import importlib, sys
-          drivers = ["pymysql", "psycopg2", "oracledb", "pymssql"]
+          drivers = ["pymysql", "psycopg2", "oracledb", "pymssql", "ibm_db", "ibm_db_sa"]
           if sys.platform != "darwin":
               drivers += ["dmPython", "ksycopg2"]
           for name in drivers:
@@ -141,11 +141,12 @@ jobs:
                    for n in CArchiveReader(str(exe)).toc.keys()]
 
           required = [
-              "psycopg2/_psycopg",        # PostgreSQL / OpenGauss / KingbaseES fallback
+              "psycopg2/_psycopg",        # PostgreSQL / OpenGauss / HighGo / Vastbase
               "oracledb/thin_impl",       # Oracle thin mode
               "pymssql/_mssql",           # SQL Server (FreeTDS statically linked)
               "dmPython",                 # 达梦 DM extension
               "ksycopg2/_ksycopg",        # 人大金仓 KingbaseES extension
+              "ibm_db",                   # DB2 (clidriver bundled in the wheel)
           ]
           if sys.platform == "win32":
               required += [
