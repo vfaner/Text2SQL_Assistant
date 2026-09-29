@@ -208,12 +208,19 @@ jobs:
 
             自然语言 → SQL → 一键执行。三个平台的独立可执行文件，无需安装 Python。
 
+            ### 本版更新（v1.3.1）
+
+            - **新增数据库类型**：MariaDB、OceanBase（MySQL 租户）、TiDB、瀚高 HighGo、海量 Vastbase、DB2 —— 驱动全部内置，开箱直连。
+            - **新增 Ollama 本地接入**：AI 配置可选 Ollama（本地），OpenAI 兼容端点 `localhost:11434/v1`，免 API Key。
+            - AI 配置页优化：左侧列表只显示配置名，厂商下拉去掉英文括注。
+            - 数据源配置页优化：输入框加宽、端口改为纯数字输入框（去掉上下箭头）、连接参数框加高；自定义类型新增必填「依赖目录」用于加载自备驱动。
+
             ### 本版更新（v1.3.0）
 
             - **数据库驱动全部内置**：下拉中的每种数据库类型开箱直连，不再提示“缺少驱动包”，只有「其他（自定义）」需要自行准备驱动。
             - Oracle 改用纯 Python 瘦驱动（无需安装 Oracle Instant Client）；SQL Server 改用自带 FreeTDS 的 pymssql（无需安装 ODBC Driver）。
             - 新内置信创数据库驱动：**达梦 DM**（官方 dmpython + dmSQLAlchemy，含客户端库）、**人大金仓 KingbaseES**（官方 ksycopg2，缺省时自动走 PG 协议）；GBase 8a 经 MySQL 协议直连。
-            - 平台说明：达梦 / 金仓官方仅提供 Windows / Linux 驱动，macOS 版连金仓自动走 PostgreSQL 协议，连达梦请使用 Windows / Linux 版；神通（ShenTong）官方仅有 JDBC/ODBC 驱动，请用「自定义」接入。
+            - 平台说明：达梦 / 金仓官方仅提供 Windows / Linux 驱动，macOS 版连金仓自动走 PostgreSQL 协议，连达梦请使用 Windows / Linux 版；神通（ShenTong）/ 崖山 / H2 官方仅有 JDBC/ODBC 驱动，请用「自定义」接入。
 
             ### 下载
 
