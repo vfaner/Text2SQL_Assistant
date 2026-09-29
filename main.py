@@ -1,5 +1,5 @@
 """
-Text2SQL Assistant - Main entry point.
+muask（沐问） - Main entry point.
 """
 import os
 import sys
@@ -25,7 +25,7 @@ def excepthook(exc_type, exc_value, exc_tb):
 def main():
     sys.excepthook = excepthook
     app = QApplication(sys.argv)
-    app.setApplicationName("Text2SQL Assistant")
+    app.setApplicationName("muask")
     # macOS takes the dock icon from the .app bundle, but Windows taskbar and
     # Linux window managers need it set explicitly.
     icon_path = resource_path("assets", "app_icon.png")

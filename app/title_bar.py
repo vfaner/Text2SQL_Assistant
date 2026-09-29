@@ -14,7 +14,7 @@ from .donate_dialog import DonateDialog
 from .paths import resource_path
 
 
-GITHUB_REPO_URL = "https://github.com/vfaner/Text2SQL_Assistant"
+GITHUB_REPO_URL = "https://github.com/vfaner/muask"
 
 ASSETS_DIR = resource_path("assets")
 

@@ -1,10 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for the Text2SQL Assistant desktop app.
+PyInstaller spec for the muask（沐问） desktop app.
 
 Bundles the `assets/` directory (icons, QR codes, screenshots) and produces:
 
-* macOS  — a one-dir build wrapped in `Text2SQL_Assistant.app`. A bundle is
+* macOS  — a one-dir build wrapped in `muask.app`. A bundle is
            required because Gatekeeper offers no way to approve a bare Unix
            executable: the "unverified developer" dialog for one only has
            "Move to Trash". Build via `scripts/build_macos.sh`, which also
@@ -18,7 +18,7 @@ the Windows executable. Regenerate the latter two with
 
 Run with:
 
-    pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
+    pyinstaller --clean --noconfirm muask.spec
 
 Output lands under `dist/`.
 """
@@ -166,7 +166,7 @@ if IS_MACOS:
         a.scripts,
         [],
         exclude_binaries=True,      # binaries/datas go into COLLECT instead
-        name="Text2SQL_Assistant",
+        name="muask",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -189,18 +189,18 @@ if IS_MACOS:
         strip=False,
         upx=False,
         upx_exclude=[],
-        name="Text2SQL_Assistant",
+        name="muask",
     )
 
     app = BUNDLE(
         coll,
-        name="Text2SQL_Assistant.app",
+        name="muask.app",
         icon="assets/app_icon.icns",
-        bundle_identifier="io.github.vfaner.text2sql-assistant",
+        bundle_identifier="io.github.vfaner.muask",
         version=VERSION,
         info_plist={
-            "CFBundleName": "Text2SQL Assistant",
-            "CFBundleDisplayName": "Text2SQL Assistant",
+            "CFBundleName": "muask",
+            "CFBundleDisplayName": "沐问 MuAsk",
             "CFBundleShortVersionString": VERSION,
             "CFBundleVersion": VERSION,
             "LSMinimumSystemVersion": "11.0",
@@ -221,7 +221,7 @@ else:
         a.binaries,
         a.datas,
         [],
-        name="Text2SQL_Assistant",
+        name="muask",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

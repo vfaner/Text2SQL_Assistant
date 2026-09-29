@@ -31,15 +31,15 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset_name: Text2SQL_Assistant-linux-x86_64
+            asset_name: muask-linux-x86_64
             binary_ext: ""
             archive_cmd: tar_gz
           - os: windows-latest
-            asset_name: Text2SQL_Assistant-windows-x86_64
+            asset_name: muask-windows-x86_64
             binary_ext: ".exe"
             archive_cmd: zip
           - os: macos-latest
-            asset_name: Text2SQL_Assistant-macos-arm64
+            asset_name: muask-macos-arm64
             binary_ext: ""
             archive_cmd: dmg
 
@@ -99,7 +99,7 @@ jobs:
       # ── Build ────────────────────────────────────────────────────────
       - name: Build with PyInstaller (Windows / Linux)
         if: runner.os != 'macOS'
-        run: pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
+        run: pyinstaller --clean --noconfirm muask.spec
 
       # Runs PyInstaller, clears extended attributes, ad-hoc signs the bundle,
       # then wraps it in a DMG with a drag-to-install Applications symlink.
@@ -114,14 +114,14 @@ jobs:
         if: matrix.archive_cmd == 'tar_gz'
         run: |
           cd dist
-          tar -czvf "${{ matrix.asset_name }}.tar.gz" "Text2SQL_Assistant${{ matrix.binary_ext }}"
+          tar -czvf "${{ matrix.asset_name }}.tar.gz" muask${{ matrix.binary_ext }}"
 
       - name: Package (Windows, zip)
         if: matrix.archive_cmd == 'zip'
         shell: bash
         run: |
           cd dist
-          7z a "${{ matrix.asset_name }}.zip" "Text2SQL_Assistant${{ matrix.binary_ext }}"
+          7z a "${{ matrix.asset_name }}.zip" muask${{ matrix.binary_ext }}"
 
       # Pure-Python modules live inside the PYZ blob; this asserts the native
       # driver layer (extension modules + vendor client libraries) really made
@@ -135,8 +135,8 @@ jobs:
           from pathlib import Path
           from PyInstaller.archive.readers import CArchiveReader
 
-          exe = Path("dist") / ("Text2SQL_Assistant.exe" if sys.platform == "win32"
-                                else "Text2SQL_Assistant")
+          exe = Path("dist") / ("muask.exe" if sys.platform == "win32"
+                                else "muask")
           names = [str(n).replace("\\", "/")
                    for n in CArchiveReader(str(exe)).toc.keys()]
 
@@ -202,11 +202,16 @@ jobs:
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Text2SQL Assistant ${{ github.ref_name }}"
+          name: "沐问 MuAsk ${{ github.ref_name }}"
           body: |
-            **Text2SQL Assistant ${{ github.ref_name }}**
+            **沐问 MuAsk ${{ github.ref_name }}**
 
             自然语言 → SQL → 一键执行。三个平台的独立可执行文件，无需安装 Python。
+
+            ### 本版更新（v1.4.0）
+
+            - **品牌重塑**：项目更名「沐问 MuAsk」（原 Text2SQL Assistant），仓库、可执行文件、配置目录统一为 `muask`。
+            - 老用户升级后，旧配置（数据源 / AI 配置）会自动从旧目录迁移到新目录，无需重新填写。
 
             ### 本版更新（v1.3.1）
 
@@ -226,15 +231,15 @@ jobs:
 
             | 平台        | 文件                                                      |
             |-------------|-----------------------------------------------------------|
-            | Windows x64 | `Text2SQL_Assistant-windows-x86_64.zip`                   |
-            | macOS arm64 | `Text2SQL_Assistant-macos-arm64.dmg`                      |
-            | Linux x64   | `Text2SQL_Assistant-linux-x86_64.tar.gz`                  |
+            | Windows x64 | `muask-windows-x86_64.zip`                   |
+            | macOS arm64 | `muask-macos-arm64.dmg`                      |
+            | Linux x64   | `muask-linux-x86_64.tar.gz`                  |
 
             ### macOS 首次运行
 
             应用未经 Apple 公证，首次打开需手动放行一次（此后双击即可）：
 
-            1. 双击 DMG，把 `Text2SQL_Assistant.app` 拖到「应用程序」
+            1. 双击 DMG，把 `muask.app` 拖到「应用程序」
             2. 双击应用，会出现「无法验证开发者」提示，点**完成**
             3. 打开**系统设置 → 隐私与安全性**，向下滚动，点被拦应用旁的**仍要打开**
             4. 再弹一个确认框，点里面的**打开**（可能需要 Touch ID 或密码）
@@ -247,7 +252,7 @@ jobs:
             > 上面的系统设置路径是当前唯一的图形放行入口。
             >
             > 也可用命令行一步搞定：
-            > `xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app`
+            > `xattr -dr com.apple.quarantine /Applications/muask.app`
 
             ### Windows 首次运行
 
@@ -265,14 +270,14 @@ jobs:
             ### Linux 运行
 
             ```bash
-            tar -xzvf Text2SQL_Assistant-linux-x86_64.tar.gz
-            chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant
+            tar -xzvf muask-linux-x86_64.tar.gz
+            chmod +x muask && ./muask
             ```
 
             > 若报 `could not load the Qt platform plugin "xcb"`，补装 Qt 依赖的 X11 库：
             > `sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libdbus-1-3`
 
-            更多说明请见仓库 [README](https://github.com/vfaner/Text2SQL_Assistant/blob/main/README.md)。
+            更多说明请见仓库 [README](https://github.com/vfaner/muask/blob/main/README.md)。
           files: |
             artifacts/**/*.zip
             artifacts/**/*.tar.gz

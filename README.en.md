@@ -1,25 +1,27 @@
-# AI Text-to-SQL Assistant
+# MuAsk (沐问)
 
 English | [简体中文](./README.md)
 
 A desktop application built with **PySide6** that turns **natural-language questions into SQL**, executes it on your configured database, and shows the result. Supports mainstream RDBMSes and Chinese "信创" (domestic) databases, and works with multiple LLM vendors out of the box.
 
-- Repo: https://github.com/vfaner/Text2SQL_Assistant
+> Formerly Text2SQL Assistant. Renamed to **MuAsk** in v1.4.0 — "mu" comes from the author's domain qqmu.com, "ask" for natural-language querying. It joins the same-author product family [jync](https://github.com/vfaner/jync) (data sync) and [jargus](https://github.com/vfaner/jargus) (Java code review).
+
+- Repo: https://github.com/vfaner/muask
 - If this project is useful to you, please consider giving it a **Star ⭐**.
 
 ---
 
 ## 📦 Grab a pre-built binary (no Python required)
 
-Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/Text2SQL_Assistant/releases)** and grab the build for your platform. No Python, no dependencies, no `pip install`. None of the three builds are code-signed, so Windows and macOS both need a one-time manual approval on first launch (once each, never again afterwards) — steps below.
+Don't feel like setting up a Python environment? Head over to the **[Releases page](https://github.com/vfaner/muask/releases)** and grab the build for your platform. No Python, no dependencies, no `pip install`. None of the three builds are code-signed, so Windows and macOS both need a one-time manual approval on first launch (once each, never again afterwards) — steps below.
 
 | Platform | Download | How to run |
 |----------|----------|------------|
-| **Windows x64** | `Text2SQL_Assistant-windows-x86_64.zip` | Unzip → double-click `Text2SQL_Assistant.exe`. SmartScreen blocks it once, see below. |
-| **macOS (Apple Silicon)** | `Text2SQL_Assistant-macos-arm64.dmg` | Mount → drag to Applications → double-click. Needs a one-time approval, see below. |
-| **Linux x64** | `Text2SQL_Assistant-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant` |
+| **Windows x64** | `muask-windows-x86_64.zip` | Unzip → double-click `muask.exe`. SmartScreen blocks it once, see below. |
+| **macOS (Apple Silicon)** | `muask-macos-arm64.dmg` | Mount → drag to Applications → double-click. Needs a one-time approval, see below. |
+| **Linux x64** | `muask-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x muask && ./muask` |
 
-> 👉 **Latest release**: https://github.com/vfaner/Text2SQL_Assistant/releases/latest
+> 👉 **Latest release**: https://github.com/vfaner/muask/releases/latest
 >
 > The "run from source" instructions below are only needed if you want to modify the code, contribute, or run on a target we don't yet ship binaries for (e.g. Intel Macs).
 
@@ -40,7 +42,7 @@ The executable is **not code-signed** (an EV code-signing certificate costs seve
 
 The app is **not notarized by Apple** (notarization requires a $99/year Apple Developer membership), so macOS blocks it the first time. To approve it:
 
-1. Open the DMG and drag `Text2SQL_Assistant.app` into Applications
+1. Open the DMG and drag `muask.app` into Applications
 2. Double-click the app → you'll get *"Apple could not verify…"* → click **Done** (**not** "Move to Trash")
 3. Open **System Settings → Privacy & Security**, scroll to the Security section, and click **Open Anyway** next to the app's name
 4. A second confirmation dialog appears — click **Open** in it; macOS may ask for Touch ID or your login password
@@ -56,7 +58,7 @@ The app is **not notarized by Apple** (notarization requires a $99/year Apple De
 If you'd rather do it in one command, strip the quarantine flag and then double-click normally:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app
+xattr -dr com.apple.quarantine /Applications/muask.app
 ```
 
 ### 🐧 Running on Linux
@@ -64,9 +66,9 @@ xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app
 Linux has no signature gate, but you do need to add the executable bit after unpacking (and most file managers won't let you double-click a bare binary anyway):
 
 ```bash
-tar -xzvf Text2SQL_Assistant-linux-x86_64.tar.gz
-chmod +x Text2SQL_Assistant
-./Text2SQL_Assistant
+tar -xzvf muask-linux-x86_64.tar.gz
+chmod +x muask
+./muask
 ```
 
 If you hit `could not load the Qt platform plugin "xcb"`, your system is missing the X11 libraries Qt needs (Debian / Ubuntu):
@@ -114,14 +116,14 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 ## Project layout
 
 ```
-Text2SQL_Assistant/
+muask/
 ├── main.py                        # Entry point
 ├── requirements.txt               # Python dependencies
 ├── config.example.json            # Example configuration
 ├── README.md                      # Chinese README
 ├── README.en.md                   # This file
 ├── LICENSE                        # MIT License
-├── Text2SQL_Assistant.spec        # PyInstaller config (.app on macOS, one-file elsewhere)
+├── muask.spec        # PyInstaller config (.app on macOS, one-file elsewhere)
 ├── scripts/
 │   ├── build_macos.sh             # macOS build + ad-hoc sign + DMG
 │   ├── prepare_icon.py            # Cuts the rounded plate out of a photo-background JPG
@@ -250,9 +252,9 @@ Where `config.json` lives depends on how you run the app:
 | How you run it | `config.json` location |
 |----------------|------------------------|
 | From source | Project root (see `config.example.json` for a template) |
-| macOS build | `~/Library/Application Support/Text2SQL_Assistant/` |
-| Windows build | `%APPDATA%\Text2SQL_Assistant\` |
-| Linux build | `$XDG_CONFIG_HOME/text2sql-assistant/` (defaults to `~/.config/…`) |
+| macOS build | `~/Library/Application Suppor./muask/` |
+| Windows build | `%APPDATA%\muask\` |
+| Linux build | `$XDG_CONFIG_HOME/muask/` (defaults to `~/.config/…`) |
 
 Packaged builds **cannot** keep config next to the executable: writing inside a macOS `.app` invalidates its code signature and the bundle stops launching, and a one-file build's runtime directory is a temp dir that's deleted on exit. That's exactly why older builds lost your settings on every restart — config from the old location is now migrated automatically, so there's nothing to move by hand.
 
@@ -311,14 +313,14 @@ Every type in the dropdown builds its connection URL automatically and connects
 
 ## Packaging (optional)
 
-Packaging is driven by `Text2SQL_Assistant.spec`, which produces a different artifact per platform. Don't use a bare `pyinstaller -F main.py` — it drops the bundled assets and the macOS bundle structure.
+Packaging is driven by `muask.spec`, which produces a different artifact per platform. Don't use a bare `pyinstaller -F main.py` — it drops the bundled assets and the macOS bundle structure.
 
 **Windows / Linux** — single-file executable:
 
 ```bash
 pip install pyinstaller
-pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
-# → dist/Text2SQL_Assistant[.exe]
+pyinstaller --clean --noconfirm muask.spec
+# → dis./muask[.exe]
 ```
 
 **macOS** — `.app` bundle wrapped in a DMG; the script also ad-hoc signs it:
@@ -326,8 +328,8 @@ pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
 ```bash
 pip install pyinstaller
 ./scripts/build_macos.sh
-# → dist/Text2SQL_Assistant.app
-#   dist/Text2SQL_Assistant-macos-arm64.dmg
+# → dist/muask.app
+#   dist/muask-macos-arm64.dmg
 ```
 
 Shipping a `.app` on macOS isn't cosmetic: Gatekeeper offers **no** approval path for an unsigned bare Unix executable — its warning dialog only has "Move to Trash", so users simply cannot run it.
@@ -358,7 +360,7 @@ Both scripts shell out to macOS's built-in `sips` / `iconutil` (prepare also use
 
 If this tool saves you time, consider one of the following — all appreciated 🙌:
 
-- Give the repo a **Star ⭐** on [GitHub](https://github.com/vfaner/Text2SQL_Assistant).
+- Give the repo a **Star ⭐** on [GitHub](https://github.com/vfaner/muask).
 - Click the **捐赠 (Donate)** button in the app's title bar for the Alipay / WeChat / QQ QR codes.
 
 ---

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Build, ad-hoc sign, and package Text2SQL Assistant for macOS.
+# Build, ad-hoc sign, and package muask（沐问） for macOS.
 #
 # Produces:
-#   dist/Text2SQL_Assistant.app
-#   dist/Text2SQL_Assistant-macos-<arch>.dmg
+#   dist/muask.app
+#   dist/muask-macos-<arch>.dmg
 #
 # The app is ad-hoc signed ("-"), which is enough to run locally but does NOT
 # satisfy Gatekeeper. Users downloading the DMG must approve it once via
@@ -17,13 +17,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APP="dist/Text2SQL_Assistant.app"
+APP="dist/muask.app"
 ARCH="$(uname -m)"
-DMG="dist/Text2SQL_Assistant-macos-${ARCH}.dmg"
-VOLNAME="Text2SQL Assistant"
+DMG="dist/muask-macos-${ARCH}.dmg"
+VOLNAME="沐问 MuAsk"
 
 echo "==> Building with PyInstaller"
-pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
+pyinstaller --clean --noconfirm muask.spec
 
 if [[ ! -d "$APP" ]]; then
   echo "error: $APP was not produced — is this spec running on macOS?" >&2

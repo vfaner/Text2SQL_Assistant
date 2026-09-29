@@ -19,7 +19,7 @@ from . import toast as toast_mod
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI Text-to-SQL 智能查询工具")
+        self.setWindowTitle("沐问 MuAsk · 自然语言查询数据库")
         self.resize(1280, 860)
 
         # Frameless: custom title bar handles minimize/maximize/close and dragging
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         self.ai_page = AIConfigPage(self.cfg)
         self.about_page = AboutPage()
 
-        self.tabs.addTab(self.text2sql_page, "  Text2SQL  ")
+        self.tabs.addTab(self.text2sql_page, "  沐问  ")
         self.tabs.addTab(self.data_source_page, "  数据源配置  ")
         self.tabs.addTab(self.ai_page, "  AI 配置  ")
         self.tabs.addTab(self.about_page, "  软件说明  ")

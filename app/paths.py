@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import sys
 
-APP_NAME = "Text2SQL_Assistant"
+APP_NAME = "muask"
 
 # Project root when running from source (this file lives in <root>/app/).
 _SOURCE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,7 +53,7 @@ def user_data_dir() -> str:
         base = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), APP_NAME)
     else:
         xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-        base = os.path.join(xdg, "text2sql-assistant")
+        base = os.path.join(xdg, "muask")
 
     os.makedirs(base, exist_ok=True)
     return base
@@ -75,6 +75,20 @@ def legacy_config_paths() -> list[str]:
         os.path.join(resource_base(), "config.json"),
         os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "config.json"),
     ]
+    # Pre-v1.4.0 brand name was "Text2SQL_Assistant" / "text2sql-assistant".
+    # Keep these forever so users who upgrade across the rename don't lose
+    # their data-source / AI configs — config.py reads the first existing one
+    # and saves it back into the new muask directory.
+    old = "Text2SQL_Assistant"
+    if sys.platform == "darwin":
+        candidates.append(os.path.expanduser(
+            f"~/Library/Application Support/{old}/config.json"))
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+        candidates.append(os.path.join(appdata, old, "config.json"))
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+        candidates.append(os.path.join(xdg, "text2sql-assistant", "config.json"))
     seen, out = set(), []
     for path in candidates:
         real = os.path.realpath(path)

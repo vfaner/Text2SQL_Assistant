@@ -1,25 +1,27 @@
-# AI Text-to-SQL 智能查询工具
+# 沐问 MuAsk
 
 [English](./README.en.md) | 简体中文
 
 一款基于 PySide6 的桌面应用，通过**自然语言描述 → AI 生成 SQL → 在数据库执行并展示结果**。支持主流数据库和信创数据库，兼容多个主流 AI 大模型。
 
-- 项目地址：https://github.com/vfaner/Text2SQL_Assistant
+> 原名 Text2SQL Assistant，v1.4.0 起更名「沐问 MuAsk」（mu 来自主域名 qqmu.com，ask = 自然语言提问），与同作者的 [jync](https://github.com/vfaner/jync)（数据同步）、[jargus](https://github.com/vfaner/jargus)（Java 代码评审）组成品牌系列。
+
+- 项目地址：https://github.com/vfaner/muask
 - 如果对你有帮助，欢迎 **Star ⭐**
 
 ---
 
 ## 📦 直接下载可执行文件（无需 Python 环境）
 
-不想折腾环境？直接到 **[Releases 页面](https://github.com/vfaner/Text2SQL_Assistant/releases)** 下载对应平台的打包程序，不依赖 Python、不依赖任何库。三个平台的包都**没有代码签名**，所以 Windows 和 macOS 首次运行都要手动放行一次（各一次，之后再无提示），步骤见下。
+不想折腾环境？直接到 **[Releases 页面](https://github.com/vfaner/muask/releases)** 下载对应平台的打包程序，不依赖 Python、不依赖任何库。三个平台的包都**没有代码签名**，所以 Windows 和 macOS 首次运行都要手动放行一次（各一次，之后再无提示），步骤见下。
 
 | 平台 | 下载文件 | 使用方式 |
 |------|---------|----------|
-| **Windows x64** | `Text2SQL_Assistant-windows-x86_64.zip` | 解压 → 双击 `Text2SQL_Assistant.exe`。首次会被 SmartScreen 拦一次，见下方说明 |
-| **macOS (Apple Silicon)** | `Text2SQL_Assistant-macos-arm64.dmg` | 挂载 → 拖到「应用程序」→ 双击。首次需放行一次，见下方说明 |
-| **Linux x64** | `Text2SQL_Assistant-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x Text2SQL_Assistant && ./Text2SQL_Assistant` |
+| **Windows x64** | `muask-windows-x86_64.zip` | 解压 → 双击 `muask.exe`。首次会被 SmartScreen 拦一次，见下方说明 |
+| **macOS (Apple Silicon)** | `muask-macos-arm64.dmg` | 挂载 → 拖到「应用程序」→ 双击。首次需放行一次，见下方说明 |
+| **Linux x64** | `muask-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x muask && ./muask` |
 
-> 👉 **最新版本**：https://github.com/vfaner/Text2SQL_Assistant/releases/latest
+> 👉 **最新版本**：https://github.com/vfaner/muask/releases/latest
 >
 > 只有想改代码、二次开发或跑不同架构（如 Intel Mac）时才需要下面的“从源码运行”步骤。
 
@@ -40,7 +42,7 @@
 
 应用**未经 Apple 公证**（公证需要 $99/年的 Apple Developer 会员），所以从网上下载后 macOS 会拦一次。放行步骤：
 
-1. 双击 DMG，把 `Text2SQL_Assistant.app` 拖到「应用程序」
+1. 双击 DMG，把 `muask.app` 拖到「应用程序」
 2. 双击应用 → 弹出「Apple 无法验证…是否包含恶意软件」→ 点**完成**（不要点「移到废纸篓」）
 3. 打开**系统设置 → 隐私与安全性**，向下滚动到「安全性」，点应用名旁的**仍要打开**
 4. 会再弹一个确认框，点里面的**打开**；系统可能要求 Touch ID 或登录密码
@@ -55,7 +57,7 @@
 嫌麻烦也可以用一行命令直接清除隔离标记，然后正常双击：
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app
+xattr -dr com.apple.quarantine /Applications/muask.app
 ```
 
 ### 🐧 Linux 运行说明
@@ -63,9 +65,9 @@ xattr -dr com.apple.quarantine /Applications/Text2SQL_Assistant.app
 Linux 没有类似的签名拦截，但 tar 解包后需要手动加执行权限（多数文件管理器也不会让你直接双击一个裸二进制）：
 
 ```bash
-tar -xzvf Text2SQL_Assistant-linux-x86_64.tar.gz
-chmod +x Text2SQL_Assistant
-./Text2SQL_Assistant
+tar -xzvf muask-linux-x86_64.tar.gz
+chmod +x muask
+./muask
 ```
 
 若报 `could not load the Qt platform plugin "xcb"`，说明系统缺 Qt 需要的 X11 库，补上即可（Debian / Ubuntu）：
@@ -111,14 +113,14 @@ sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
 ## 目录结构
 
 ```
-Text2SQL_Assistant/
+muask/
 ├── main.py                        # 应用入口
 ├── requirements.txt               # 依赖清单
 ├── config.example.json            # 示例配置
 ├── README.md                      # 本文件（中文）
 ├── README.en.md                   # 英文说明
 ├── LICENSE                        # MIT 协议
-├── Text2SQL_Assistant.spec        # PyInstaller 配置（macOS 出 .app，Win/Linux 出单文件）
+├── muask.spec        # PyInstaller 配置（macOS 出 .app，Win/Linux 出单文件）
 ├── scripts/
 │   ├── build_macos.sh             # macOS 构建 + ad-hoc 签名 + 打 DMG
 │   ├── prepare_icon.py            # 从带背景的素材抠出透明底圆角母版
@@ -248,9 +250,9 @@ python main.py
 | 运行方式 | `config.json` 位置 |
 |---------|-------------------|
 | 从源码运行 | 项目根目录（示例见 `config.example.json`） |
-| macOS 打包版 | `~/Library/Application Support/Text2SQL_Assistant/` |
-| Windows 打包版 | `%APPDATA%\Text2SQL_Assistant\` |
-| Linux 打包版 | `$XDG_CONFIG_HOME/text2sql-assistant/`（默认 `~/.config/…`） |
+| macOS 打包版 | `~/Library/Application Suppor./muask/` |
+| Windows 打包版 | `%APPDATA%\muask\` |
+| Linux 打包版 | `$XDG_CONFIG_HOME/muask/`（默认 `~/.config/…`） |
 
 打包版**不能**把配置写在程序目录里：macOS 的 `.app` 一旦被写入就会破坏代码签名导致无法启动，而单文件版的运行目录是临时目录、退出即删。旧版本正是因此每次重启都丢配置 —— 现在会自动把旧配置迁移到上表位置，无需手动搬。
 
@@ -297,14 +299,14 @@ python main.py
 
 ## 打包（可选）
 
-打包配置集中在 `Text2SQL_Assistant.spec`，按平台产出不同形态（不要用裸 `pyinstaller -F main.py`，会丢掉 assets 和 macOS 的 bundle 结构）：
+打包配置集中在 `muask.spec`，按平台产出不同形态（不要用裸 `pyinstaller -F main.py`，会丢掉 assets 和 macOS 的 bundle 结构）：
 
 **Windows / Linux** —— 单文件可执行：
 
 ```bash
 pip install pyinstaller
-pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
-# 产物：dist/Text2SQL_Assistant[.exe]
+pyinstaller --clean --noconfirm muask.spec
+# 产物：dis./muask[.exe]
 ```
 
 **macOS** —— `.app` bundle + DMG，脚本会顺带做 ad-hoc 签名：
@@ -312,8 +314,8 @@ pyinstaller --clean --noconfirm Text2SQL_Assistant.spec
 ```bash
 pip install pyinstaller
 ./scripts/build_macos.sh
-# 产物：dist/Text2SQL_Assistant.app
-#       dist/Text2SQL_Assistant-macos-arm64.dmg
+# 产物：dist/muask.app
+#       dist/muask-macos-arm64.dmg
 ```
 
 macOS 必须打成 `.app` 而不是裸可执行文件：Gatekeeper **不给**未签名的裸 Unix 可执行文件任何放行入口，弹窗只有「移到废纸篓」一个选项，用户根本没法运行。
@@ -345,7 +347,7 @@ macOS 必须打成 `.app` 而不是裸可执行文件：Gatekeeper **不给**未
 
 如果这个工具对你有帮助，欢迎在标题栏点击 **捐赠**，通过支付宝 / 微信 / QQ 打赏支持作者继续维护 ☕。
 
-同时也非常欢迎在 [GitHub](https://github.com/vfaner/Text2SQL_Assistant) 上给一个 **Star ⭐** —— 这是对开源作者最实在的鼓励。
+同时也非常欢迎在 [GitHub](https://github.com/vfaner/muask) 上给一个 **Star ⭐** —— 这是对开源作者最实在的鼓励。
 
 ---
 
