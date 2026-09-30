@@ -11,7 +11,29 @@ A desktop application built with **PySide6** that turns **natural-language quest
 | GitHub | https://github.com/vfaner/muask |
 | Gitee (China mirror) | https://gitee.com/super_rgh/muask |
 
+### Contact us
+
+Run into a problem, have an idea, or want to request a feature? Feel free to reach out:
+
+| Channel | ID |
+|---------|----|
+| QQ | 817094 / 2912167928 |
+| QQ group | 426669837 |
+| WeChat | hua47609 |
+
 If this project is useful to you, please consider giving it a **Star ⭐**.
+
+---
+
+## 💡 Why we built this
+
+A situation many of us have run into:
+
+- A **new hire** takes over a mature project with hundreds or thousands of tables and no up-to-date database documentation — writing even a simple query means first figuring out which table and column to use;
+- After years of iterations, the **relationships between tables and the meaning of fields** live scattered across the codebase and senior engineers' memories. Developers, QA and ops who need to understand a business metric quickly end up digging through code and asking around;
+- Even an ad-hoc data lookup requires understanding the schema and hand-writing a chunk of SQL — high friction, low efficiency.
+
+**MuAsk exists to solve exactly this pain point**: once connected to your database, it automatically reads the real table structures, column comments and primary/foreign-key relationships. Just describe what you want in plain language, and the AI generates executable SQL over your **real tables and fields** and runs it for you — no hunting for tables, no asking around, no hand-written SQL. New team members can query data from day one.
 
 ---
 
@@ -376,14 +398,6 @@ Both scripts shell out to macOS's built-in `sips` / `iconutil` (prepare also use
 
 ---
 
-## Support the project
-
-If this tool saves you time, consider one of the following — all appreciated 🙌:
-
-- Give the repo a **Star ⭐** on [GitHub](https://github.com/vfaner/muask).
-- Click the **捐赠 (Donate)** button in the app's title bar for the Alipay / WeChat / QQ QR codes.
-
----
 
 ## License
 

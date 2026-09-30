@@ -104,9 +104,15 @@ class AboutUsPage(QWidget):
 
         contact_row2 = QHBoxLayout()
         contact_row2.setSpacing(20)
-        contact_row2.addWidget(self._contact_label("微信：", "hua47609"))
+        contact_row2.addWidget(self._contact_label("QQ 群：", "426669837"))
         contact_row2.addStretch(1)
         intro_l.addLayout(contact_row2)
+
+        contact_row3 = QHBoxLayout()
+        contact_row3.setSpacing(20)
+        contact_row3.addWidget(self._contact_label("微信：", "hua47609"))
+        contact_row3.addStretch(1)
+        intro_l.addLayout(contact_row3)
 
         content.addWidget(intro)
 
