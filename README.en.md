@@ -43,7 +43,7 @@ Don't feel like setting up a Python environment? Head over to the **[Releases pa
 
 | Platform | Download | How to run |
 |----------|----------|------------|
-| **Windows x64** | `muask-windows-x86_64.zip` | Unzip → double-click `muask.exe`. SmartScreen blocks it once, see below. |
+| **Windows x64** | `muask-windows-x86_64.exe` | Single file — just download and double-click. SmartScreen blocks it once, see below. |
 | **macOS (Apple Silicon)** | `muask-macos-arm64.dmg` | Mount → drag to Applications → double-click. Needs a one-time approval, see below. |
 | **Linux x64** | `muask-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x muask && ./muask` |
 
@@ -60,7 +60,7 @@ Microsoft Defender SmartScreen blocks it the first time:
 3. A **Run anyway** button appears — click it
 4. The app launches. Every launch after this is a plain double-click, with no prompt.
 
-> Alternatively, before unzipping: right-click the zip → Properties → tick **Unblock** at the bottom. The extracted exe then carries no tag and won't be blocked at all.
+> Alternatively: right-click the downloaded exe → Properties → tick **Unblock** at the bottom. It then carries no tag and won't be blocked at all.
 >
 > First launch unpacks roughly 60–120 MB (all database drivers are bundled) into a temp directory, so expect a few seconds with no window. That's normal.
 

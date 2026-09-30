@@ -37,7 +37,9 @@ jobs:
           - os: windows-latest
             asset_name: muask-windows-x86_64
             binary_ext: ".exe"
-            archive_cmd: zip
+            # 构建产物本身就是单文件 exe，直接发布，不再套 zip：
+            # 用户下载后双击即可运行，无需解压。
+            archive_cmd: raw_exe
           - os: macos-latest
             asset_name: muask-macos-arm64
             binary_ext: ""
@@ -116,12 +118,13 @@ jobs:
           cd dist
           tar -czvf "${{ matrix.asset_name }}.tar.gz" muask${{ matrix.binary_ext }}
 
-      - name: Package (Windows, zip)
-        if: matrix.archive_cmd == 'zip'
+      # Windows 直接把构建出的单文件 exe 改名为发布文件名（无压缩包）
+      - name: Rename Windows executable
+        if: matrix.archive_cmd == 'raw_exe'
         shell: bash
         run: |
           cd dist
-          7z a "${{ matrix.asset_name }}.zip" muask${{ matrix.binary_ext }}
+          mv muask${{ matrix.binary_ext }} "${{ matrix.asset_name }}.exe"
 
       # Pure-Python modules live inside the PYZ blob; this asserts the native
       # driver layer (extension modules + vendor client libraries) really made
@@ -135,8 +138,11 @@ jobs:
           from pathlib import Path
           from PyInstaller.archive.readers import CArchiveReader
 
-          exe = Path("dist") / ("muask.exe" if sys.platform == "win32"
-                                else "muask")
+          if sys.platform == "win32":
+              # 打包步骤已把 muask.exe 改名为 muask-windows-x86_64.exe
+              exe = next(Path("dist").glob("muask*.exe"))
+          else:
+              exe = Path("dist") / "muask"
           names = [str(n).replace("\\", "/")
                    for n in CArchiveReader(str(exe)).toc.keys()]
 
@@ -173,7 +179,7 @@ jobs:
         with:
           name: ${{ matrix.asset_name }}
           path: |
-            dist/${{ matrix.asset_name }}.zip
+            dist/${{ matrix.asset_name }}.exe
             dist/${{ matrix.asset_name }}.tar.gz
             dist/${{ matrix.asset_name }}.dmg
           if-no-files-found: ignore
@@ -234,7 +240,7 @@ jobs:
 
             | 平台        | 文件                                                      |
             |-------------|-----------------------------------------------------------|
-            | Windows x64 | `muask-windows-x86_64.zip`                   |
+            | Windows x64 | `muask-windows-x86_64.exe`（单文件，双击即运行）|
             | macOS arm64 | `muask-macos-arm64.dmg`                      |
             | Linux x64   | `muask-linux-x86_64.tar.gz`                  |
 
@@ -259,14 +265,14 @@ jobs:
 
             ### Windows 首次运行
 
-            exe 未做代码签名，从浏览器下载的 zip 带 Mark-of-the-Web 标记，
-            解压出的 exe 会被 SmartScreen 拦一次（此后双击即可）：
+            exe 未做代码签名，从浏览器下载时会带 Mark-of-the-Web 标记，
+            首次双击会被 SmartScreen 拦一次（此后双击即可）：
 
-            1. 双击 exe，弹出「**Windows 已保护你的电脑**」
+            1. 双击下载好的 `muask-windows-x86_64.exe`，弹出「**Windows 已保护你的电脑**」
             2. 该弹窗默认只有「不运行」，点左下角「**更多信息**」
             3. 展开后点「**仍要运行**」
 
-            > 也可以在解压前右键 zip → 属性 → 勾选「**解除锁定**」，就不会被拦。
+            > 也可以右键下载的 exe → 属性 → 勾选「**解除锁定**」，就不会被拦。
             >
             > 首次启动要把约 60–120 MB 内容解包到临时目录，有几秒没窗口是正常的（内置了全部数据库驱动）。
 
@@ -282,7 +288,7 @@ jobs:
 
             更多说明请见仓库 [README](https://github.com/vfaner/muask/blob/main/README.md)。
           files: |
-            artifacts/**/*.zip
+            artifacts/**/*.exe
             artifacts/**/*.tar.gz
             artifacts/**/*.dmg
           draft: false
