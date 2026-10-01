@@ -4,6 +4,8 @@
 
 一款基于 PySide6 的桌面应用，通过**自然语言描述 → AI 生成 SQL → 在数据库执行并展示结果**。支持主流数据库和信创数据库，兼容多个主流 AI 大模型。
 
+![沐问 MuAsk 封面](assets/muwen.png)
+
 ### 项目地址
 
 | 平台 | 地址 |
@@ -46,6 +48,8 @@
 | **Windows x64** | `muask-windows-x86_64.exe` | 单文件，下载后直接双击运行。首次会被 SmartScreen 拦一次，见下方说明 |
 | **macOS (Apple Silicon)** | `muask-macos-arm64.dmg` | 挂载 → 拖到「应用程序」→ 双击。首次需放行一次，见下方说明 |
 | **Linux x64** | `muask-linux-x86_64.tar.gz` | `tar -xzvf ...tar.gz` → `chmod +x muask && ./muask` |
+
+> 🎬 **视频演示**：[告别手写 SQL！配置即用的开源 Text2SQL 工具，无需指定表名，AI 自动读表注释生成可执行语句！](https://www.bilibili.com/video/BV1HvY369EVe/)（B 站）
 
 > 👉 **最新版本**：https://github.com/vfaner/muask/releases/latest
 >
