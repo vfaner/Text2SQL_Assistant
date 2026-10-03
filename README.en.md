@@ -19,7 +19,7 @@ Run into a problem, have an idea, or want to request a feature? Feel free to rea
 |---------|----|
 | QQ | 817094 / 2912167928 |
 | QQ group | 426669837 |
-| WeChat | hua47609 |
+| WeChat | qqmu66 |
 
 If this project is useful to you, please consider giving it a **Star ⭐**.
 
